@@ -38,7 +38,7 @@ import { uk } from './src/uk.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(fs.readFileSync(path.join(here, 'package.json'), 'utf8'));
-const UA = buildUserAgent(pkg.version, pkg.humanPlus.contact);
+const UA = buildUserAgent(pkg.version);
 const DEMO = process.argv.includes('--demo');
 const PROBE = process.argv.includes('--probe');
 const SHOTS = process.argv.find((a) => a.startsWith('--shots='))?.slice(8);
@@ -58,7 +58,7 @@ const OS_UA =
   ] ?? 'X11; Linux x86_64';
 app.userAgentFallback = `Mozilla/5.0 (${OS_UA}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome} Safari/537.36 Electron/${process.versions.electron}`;
 
-app.setAppUserModelId(app.isPackaged ? 'ua.unofficial.humanplus' : 'ua.unofficial.humanplus.dev'); // значок і група на панелі завдань Windows, сповіщення
+app.setAppUserModelId(app.isPackaged ? 'com.humanplus.app' : 'com.humanplus.app.dev'); // значок і група на панелі завдань Windows, сповіщення
 if (DEMO) app.setPath('userData', app.getPath('userData') + '-demo'); // демо не торкається справжнього кешу й сесії
 if (!app.requestSingleInstanceLock()) app.quit();
 

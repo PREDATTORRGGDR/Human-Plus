@@ -13,10 +13,10 @@ exports.default = async function afterPack(context) {
     'product-version': info.version,
     'version-string': {
       ProductName: info.productName,
-      FileDescription: `${info.productName} — неофіційний клієнт для HUMAN Школа`,
+      FileDescription: info.productName,
       InternalName: info.productName,
       OriginalFilename: `${info.productFilename}.exe`,
-      LegalCopyright: 'MIT',
+      LegalCopyright: 'Copyright (c) 2026 PREDATTORRGGDR. All rights reserved.',
     },
   });
 };

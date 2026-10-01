@@ -6,3 +6,5 @@ probe-output/
 *.exe
 *.blockmap
 .DS_Store
+AGENTS.md
+build/license.txt

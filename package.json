@@ -1,11 +1,11 @@
 {
   "name": "human-plus",
   "productName": "Human Plus",
-  "version": "1.0.0",
-  "description": "Human Plus — неофіційний клієнт для HUMAN Школа: домашні завдання, розклад і оцінки учня на одному екрані. Лише читання.",
+  "version": "1.1.0",
+  "description": "Human Plus — застосунок для учня HUMAN Школа: домашні завдання, розклад і оцінки на одному екрані. Лише читання.",
   "main": "main.js",
   "type": "module",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "private": true,
   "dependencies": {
     "dompurify": "3.4.16"
@@ -21,9 +21,6 @@
     "rcedit": "5.0.2",
     "sharp": "0.35.5"
   },
-  "humanPlus": {
-    "contact": "contact-see-README"
-  },
   "scripts": {
     "start": "electron .",
     "demo": "electron . --demo",
@@ -32,6 +29,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "shots": "electron . --demo --shots=docs/img",
+    "predist": "node scripts/license-txt.mjs",
     "dist": "electron-builder --win",
     "audit": "npm audit --audit-level=high",
     "icons": "node scripts/make-icons.mjs"
@@ -41,7 +39,7 @@
   },
   "author": "",
   "build": {
-    "appId": "ua.unofficial.humanplus",
+    "appId": "com.humanplus.app",
     "productName": "Human Plus",
     "asar": true,
     "directories": {
@@ -74,6 +72,7 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "language": "1058",
+      "license": "build/license.txt",
       "shortcutName": "Human Plus"
     },
     "portable": {
@@ -81,7 +80,7 @@
     },
     "artifactName": "${productName}-Setup-${version}.exe",
     "extraMetadata": {
-      "description": "Human Plus — неофіційний клієнт для HUMAN Школа: домашні завдання, розклад і оцінки учня на одному екрані. Лише читання."
+      "description": "Human Plus — застосунок для учня HUMAN Школа: домашні завдання, розклад і оцінки на одному екрані. Лише читання."
     },
     "afterPack": "scripts/after-pack.cjs",
     "publish": null

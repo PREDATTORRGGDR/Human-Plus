@@ -1031,7 +1031,6 @@ async function openAbout() {
       logo(56, 'logo'),
       h('p', { class: 'name', text: `${uk.appName} · ${uk.tagline}` }),
       h('p', { text: uk.about.text }),
-      h('p', { class: 'meta', text: uk.unofficial }),
       h('p', { text: uk.about.privacy }),
       h('p', {
         class: 'meta',

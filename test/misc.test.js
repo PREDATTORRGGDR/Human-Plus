@@ -48,8 +48,7 @@ test('демо-дані: лише вигадані предмети, без ме
   assert.doesNotMatch(json, /https?:\/\/(?!zoom\.us\/j\/000000000)/);
 });
 
-test('uk.js: назва продукту й підпис про неофіційність', () => {
+test('uk.js: назва продукту', () => {
   assert.equal(uk.appName, 'Human Plus');
-  assert.match(uk.tagline, /Неофіційний клієнт для HUMAN Школа/);
-  assert.match(uk.unofficial, /не платний тариф/);
+  assert.match(uk.tagline, /HUMAN Школа/);
 });

@@ -46,15 +46,8 @@ export function isStudent(info, uid) {
   return true;
 }
 
-/** Прозорий User-Agent запитів до API: назва, версія, «неофіційний, лише читання», контакт. */
-export const buildUserAgent = (version, contact) =>
-  `HumanPlus/${version} (unofficial; read-only; ${
-    String(contact)
-      .replace(/[^\x20-\x7e]/g, '')
-      .replace(/[()]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim() || 'no-contact'
-  })`; // заголовок HTTP — лише ASCII
+/** User-Agent запитів до API: назва й версія. */
+export const buildUserAgent = (version) => `HumanPlus/${version}`;
 
 /** Побудова URL; усі запити — лише GET. */
 export const endpoints = {

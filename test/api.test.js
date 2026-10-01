@@ -19,19 +19,16 @@ const client = (fn, opts = {}) =>
 test('лише GET, повний набір заголовків і прозорий User-Agent', async () => {
   const seen = [];
   const c = client(async (url, init) => (seen.push(init), res(200, { ok: 1 })), {
-    userAgent: buildUserAgent('1.2.3', 'контакт-із-README'),
+    userAgent: buildUserAgent('1.2.3'),
   });
   await c.getJson(URL1);
   assert.equal(seen[0].method, 'GET');
   assert.equal(seen[0].credentials, 'include');
-  assert.match(seen[0].headers['User-Agent'], /^HumanPlus\/.+unofficial; read-only/);
+  assert.match(seen[0].headers['User-Agent'], /^HumanPlus\/1\.2\.3$/);
 });
 
-test('User-Agent: лише ASCII, навіть якщо контакт містить кирилицю чи дужки', () => {
-  const ua = buildUserAgent('1.0.0', 'ВКАЖІТЬ (контакт) me@example.org');
-  assert.match(ua, /^[ -~]+$/);
-  assert.equal(ua, 'HumanPlus/1.0.0 (unofficial; read-only; me@example.org)');
-  assert.match(buildUserAgent('1.0.0', 'Контакт'), /read-only; no-contact\)$/);
+test('User-Agent: лише назва й версія', () => {
+  assert.equal(buildUserAgent('1.0.0'), 'HumanPlus/1.0.0');
 });
 
 test('чужі хости відхиляються до мережі', async () => {

@@ -13,7 +13,7 @@ export async function runProbe({ app, humanSession, BrowserWindow, here, UID_COO
   });
   win.loadURL(LMS_ORIGIN);
   const out = { startedAt: new Date().toISOString(), steps: {} };
-  const ua = 'HumanPlus/probe (unofficial; read-only)';
+  const ua = 'HumanPlus/probe';
   let done = false;
   const run = async () => {
     if (done) return;
