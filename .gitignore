@@ -1,0 +1,8 @@
+node_modules/
+dist/
+probe-output/
+*.log
+.env
+*.exe
+*.blockmap
+.DS_Store

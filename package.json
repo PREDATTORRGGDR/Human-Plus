@@ -1,0 +1,89 @@
+{
+  "name": "human-plus",
+  "productName": "Human Plus",
+  "version": "1.0.0",
+  "description": "Human Plus — неофіційний клієнт для HUMAN Школа: домашні завдання, розклад і оцінки учня на одному екрані. Лише читання.",
+  "main": "main.js",
+  "type": "module",
+  "license": "MIT",
+  "private": true,
+  "dependencies": {
+    "dompurify": "3.4.16"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3",
+    "eslint": "10.11.0",
+    "globals": "17.13.0",
+    "jsdom": "30.1.1",
+    "prettier": "3.9.9",
+    "rcedit": "5.0.2",
+    "sharp": "0.35.5"
+  },
+  "humanPlus": {
+    "contact": "contact-see-README"
+  },
+  "scripts": {
+    "start": "electron .",
+    "demo": "electron . --demo",
+    "probe": "electron . --probe",
+    "test": "node --test \"test/*.test.js\"",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "shots": "electron . --demo --shots=docs/img",
+    "dist": "electron-builder --win",
+    "audit": "npm audit --audit-level=high",
+    "icons": "node scripts/make-icons.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "author": "",
+  "build": {
+    "appId": "ua.unofficial.humanplus",
+    "productName": "Human Plus",
+    "asar": true,
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.cjs",
+      "package.json",
+      "src/**/*",
+      "scripts/probe.js",
+      "scripts/shots.js",
+      "build/icon.png",
+      "build/icon.ico",
+      "build/tray.png",
+      "build/tray@2x.png",
+      "build/tray@3x.png",
+      "node_modules/dompurify/dist/purify.es.mjs"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "language": "1058",
+      "shortcutName": "Human Plus"
+    },
+    "portable": {
+      "artifactName": "${productName}-portable-${version}.exe"
+    },
+    "artifactName": "${productName}-Setup-${version}.exe",
+    "extraMetadata": {
+      "description": "Human Plus — неофіційний клієнт для HUMAN Школа: домашні завдання, розклад і оцінки учня на одному екрані. Лише читання."
+    },
+    "afterPack": "scripts/after-pack.cjs",
+    "publish": null
+  }
+}
