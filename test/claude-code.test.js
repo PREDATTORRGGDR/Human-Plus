@@ -208,6 +208,12 @@ test('пошук claude.exe: нативне встановлення, засто
   dirs[path.join(msix, '2.1.0')] = ['x64'];
   files.add(path.join(msix, '2.1.0', 'x64', 'claude.exe'));
   assert.equal(findClaudeExe(opts), path.join(msix, '2.1.0', 'x64', 'claude.exe'));
+  const data = path.join('C:/L', 'Claude-Data', 'claude_abc', 'claude-code');
+  dirs[path.join('C:/L', 'Claude-Data')] = ['claude_abc'];
+  dirs[data] = ['2.1.299'];
+  dirs[path.join(data, '2.1.299')] = ['f0'];
+  files.add(path.join(data, '2.1.299', 'f0', 'claude.exe'));
+  assert.equal(findClaudeExe(opts), path.join(data, '2.1.299', 'f0', 'claude.exe'));
   const native = path.join(
     home,
     '.local',

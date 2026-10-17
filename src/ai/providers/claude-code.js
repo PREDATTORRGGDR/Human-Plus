@@ -28,6 +28,12 @@ export function findClaudeExe({
       .reverse();
   if (env.APPDATA) candidates.push(...nested(path.join(env.APPDATA, 'Claude', 'claude-code')));
   if (env.LOCALAPPDATA)
+    // з 17.10.2026 застосунок Claude тримає свій Claude Code у %LOCALAPPDATA%\Claude-Data\claude_*\claude-code
+    for (const d of readdir(path.join(env.LOCALAPPDATA, 'Claude-Data')).filter((p) =>
+      p.startsWith('claude_'),
+    ))
+      candidates.push(...nested(path.join(env.LOCALAPPDATA, 'Claude-Data', d, 'claude-code')));
+  if (env.LOCALAPPDATA)
     for (const pkg of readdir(path.join(env.LOCALAPPDATA, 'Packages')).filter((p) =>
       p.startsWith('Claude_'),
     ))
