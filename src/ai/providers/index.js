@@ -2,6 +2,8 @@
 import { isAllowedAi } from '../../allowlist.js';
 import { AiError } from '../errors.js';
 import { createAnthropicProvider } from './anthropic.js';
+import { createGeminiProvider } from './gemini.js';
+import { createOpenAiProvider } from './openai.js';
 
 /** fetch, що пропускає лише дозволені хости ШІ (src/allowlist.js) і не передає кук. */
 export function guardFetch(fetchImpl, { openaiBase } = {}) {
@@ -22,6 +24,15 @@ export function createProvider({ settings, key, fetch }) {
   switch (settings.aiProvider) {
     case 'anthropic':
       return createAnthropicProvider({ apiKey: key, model: settings.aiModelAnthropic, fetch: f });
+    case 'openai':
+      return createOpenAiProvider({
+        apiKey: key,
+        model: settings.aiModelOpenai,
+        baseUrl: settings.aiOpenaiBase,
+        fetch: f,
+      });
+    case 'gemini':
+      return createGeminiProvider({ apiKey: key, model: settings.aiModelGemini, fetch: f });
     default:
       throw new AiError('bad_request', 'provider');
   }
