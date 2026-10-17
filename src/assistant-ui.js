@@ -327,6 +327,17 @@ export function createAssistantUI(ctx) {
 
   /** Поле ключа (вкладка і налаштування). Значення не зберігається у вікні: після відправки поле очищується. */
   function keyForm(provider = state.status?.provider ?? 'anthropic') {
+    if (provider === 'claudecode')
+      return h(
+        'div',
+        { class: 'keyform' },
+        h('div', { class: 'sname', text: t.providers.claudecode }),
+        h('p', {
+          class: state.status?.claudeCode?.found ? 'meta' : 'chat-error',
+          text: state.status?.claudeCode?.found ? t.cc.found : t.cc.missing,
+        }),
+        h('p', { class: 'meta', text: t.cc.login }),
+      );
     const st = state.status?.keys?.[provider];
     const field = h('input', {
       type: 'password',
@@ -436,11 +447,7 @@ export function createAssistantUI(ctx) {
       h('h2', {}, icon('sparkles', 18), t.title),
       h('span', {
         class: 'meta',
-        text: s
-          ? s.demo && !s.keys?.[s.provider]?.has
-            ? t.demoModel
-            : t.providers[s.provider]
-          : '',
+        text: s ? (s.demoProvider ? t.demoModel : t.providers[s.provider]) : '',
       }),
       h('span', { class: 'grow' }),
       h(

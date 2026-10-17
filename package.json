@@ -1,7 +1,7 @@
 {
   "name": "human-plus",
   "productName": "Human Plus",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Human Plus — застосунок для учня HUMAN Школа: розклад, домашні завдання, оцінки, підручники, файли й ШІ-асистент. До HUMAN лише читання.",
   "main": "main.js",
   "type": "module",

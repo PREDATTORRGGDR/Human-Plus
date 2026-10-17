@@ -19,6 +19,7 @@ import {
   session,
   shell,
 } from 'electron';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import { Readable } from 'node:stream';
@@ -41,6 +42,7 @@ import { addDays, dayStart, plural } from './src/time.js';
 import { createAssistant } from './src/ai/agent.js';
 import { AiError } from './src/ai/errors.js';
 import { PROVIDERS, createKeyStore, redactSecrets } from './src/ai/keys.js';
+import { createClaudeCodeProvider, findClaudeExe } from './src/ai/providers/claude-code.js';
 import { createDemoProvider } from './src/ai/providers/demo.js';
 import { createProvider } from './src/ai/providers/index.js';
 import { createTools } from './src/ai/tools.js';
@@ -505,10 +507,17 @@ function jsonStore(file) {
 
 function aiStatus() {
   const k = keys.status();
+  const exe = findClaudeExe();
   return {
     keys: k,
     provider: settings.aiProvider,
-    ready: DEMO || !!k[settings.aiProvider]?.has,
+    claudeCode: { found: !!exe },
+    // у демо без ключа відповідає сценарний провайдер (HP_DEMO_LIVE_AI=1 вмикає справжній для розробника)
+    demoProvider:
+      DEMO &&
+      process.env.HP_DEMO_LIVE_AI !== '1' &&
+      (settings.aiProvider === 'claudecode' || !k[settings.aiProvider]?.has),
+    ready: DEMO || (settings.aiProvider === 'claudecode' ? !!exe : !!k[settings.aiProvider]?.has),
     consent: settings.aiConsent === AI_CONSENT_VERSION,
     demo: DEMO,
     busy: assistant.busy(),
@@ -634,7 +643,23 @@ function copyToDownloads(id) {
 
 function setupAssistant(books = null) {
   keys = createKeyStore({ file: path.join(app.getPath('userData'), 'keys.json'), safeStorage });
+  // Учень без ключа API, але з Claude Code: одноразово перемикаємо на «Claude за підпискою».
+  if (settings.aiProvider === 'anthropic' && !keys.get('anthropic') && findClaudeExe())
+    patchSettings({ aiProvider: 'claudecode' });
   const getProvider = () => {
+    // Демо без мережі; HP_DEMO_LIVE_AI=1 — лише для перевірки розробником на вигаданих даних.
+    const live = DEMO && process.env.HP_DEMO_LIVE_AI === '1';
+    if (settings.aiProvider === 'claudecode') {
+      if (DEMO && !live) return createDemoProvider();
+      const exe = findClaudeExe();
+      if (!exe) throw new AiError('no_key');
+      return createClaudeCodeProvider({
+        exe,
+        model: settings.aiModelClaudeCode,
+        spawn,
+        tmpDir: app.getPath('temp'),
+      });
+    }
     const key = keys.get(settings.aiProvider);
     if (DEMO && !key) return createDemoProvider();
     return createProvider({ settings, key, fetch: globalThis.fetch });

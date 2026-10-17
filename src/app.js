@@ -1512,6 +1512,7 @@ function assistantSettings(set) {
   const s = assistant.status();
   const a = uk.ai.settings;
   const modelKey = {
+    claudecode: 'aiModelClaudeCode',
     anthropic: 'aiModelAnthropic',
     openai: 'aiModelOpenai',
     gemini: 'aiModelGemini',
