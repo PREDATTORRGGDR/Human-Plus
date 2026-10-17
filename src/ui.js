@@ -202,6 +202,18 @@ function renderBlock(b, t, ctx) {
         icon('download', 12),
         uk.buttons.download,
       );
+      const open = ctx.onOpenFile
+        ? h(
+            'button',
+            {
+              class: 'btn small',
+              'data-k': `fopen-${t.id}-${b.index}`,
+              onclick: () => ctx.onOpenFile(t.id, b.index),
+            },
+            icon('external', 12),
+            uk.buttons.open,
+          )
+        : null;
       return h(
         'div',
         { class: 'blk-card' },
@@ -212,6 +224,7 @@ function renderBlock(b, t, ctx) {
           h('div', { class: 'name', text: b.name }),
           h('div', { class: 'meta num', text: b.size ? formatSize(b.size) : '' }),
         ),
+        open,
         save,
         msg,
       );

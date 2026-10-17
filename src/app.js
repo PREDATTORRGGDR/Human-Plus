@@ -4,6 +4,7 @@
 import DOMPurify from '../node_modules/dompurify/dist/purify.es.mjs';
 import { createAssistantUI } from './assistant-ui.js';
 import { createBooksUI } from './books-ui.js';
+import { createFilesUI } from './files-ui.js';
 import { icon, logo } from './icons.js';
 import { dayView, gradesBySubject, nextView, subjectsOf, tasksView } from './model.js';
 import { createSanitizer } from './sanitize.js';
@@ -38,7 +39,7 @@ import { uk } from './uk.js';
 const api = window.hd;
 const root = document.getElementById('app');
 const nowSec = () => Math.floor(Date.now() / 1000);
-const TABS = ['today', 'next', 'tasks', 'schedule', 'grades', 'assistant', 'books'];
+const TABS = ['today', 'next', 'tasks', 'schedule', 'grades', 'assistant', 'books', 'files'];
 
 let st = null;
 let settings = {};
@@ -98,6 +99,9 @@ tctx.onBook = async (task, blocks) => {
   if (ok) go({ tab: 'books' });
   else alert(uk.books.noTextbook);
 };
+const filesUI = createFilesUI({ api, sanitize: tctx.sanitize, rerender: () => render() });
+/** «Відкрити» у файлі завдання: кеш + вбудований переглядач. */
+tctx.onOpenFile = (taskId, index) => filesUI.openFromTask(taskId, index);
 /** Кнопки «Пояснити» / «Дай відповідь для зошита»: чат відкривається поруч із контентом. */
 tctx.onAsk = (mode, task) => {
   if (ui.tab !== 'assistant' && !settings.aiPanel) api.setSettings({ aiPanel: true });
@@ -340,6 +344,7 @@ function screen() {
         grades: gradesTab,
         assistant: () => assistant.view(),
         books: () => books.view(),
+        files: () => filesUI.view(),
       }[ui.tab]();
   }
 }
@@ -1056,6 +1061,36 @@ function openSettings() {
         ),
       ),
       assistantSettings(set),
+      group(
+        uk.files.cacheTitle,
+        row(
+          uk.files.cacheLimit,
+          select(
+            'files-limit',
+            String(settings.filesCacheMb),
+            [100, 500, 1000, 2000, 5000].map((n) => [
+              String(n),
+              n >= 1000 ? `${n / 1000} ГБ` : `${n} МБ`,
+            ]),
+            (v) => set({ filesCacheMb: Number(v) }),
+          ),
+        ),
+        h(
+          'div',
+          { class: 'srow' },
+          h('span'),
+          btn(
+            uk.files.clearCache,
+            async () => {
+              await api.files.clearCache();
+              filesUI.reload();
+              toast = uk.files.cleared;
+              dialogRefresh?.();
+            },
+            { class: 'btn small', 'data-k': 'files-clear' },
+          ),
+        ),
+      ),
       group(
         uk.settings.notifyTitle,
         row(

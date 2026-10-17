@@ -317,7 +317,11 @@ test('асистент: історія для моделі обрізаєтьс�
 });
 
 test('фрагменти з читача: у хід потрапляє лише виділене, з обмеженням довжини й кількості', () => {
-  const fragments = Array.from({ length: 15 }, (_, i) => ({ title: 'Алгебра 8', printed: 30 + i, text: 'ф'.repeat(2000) }));
+  const fragments = Array.from({ length: 15 }, (_, i) => ({
+    title: 'Алгебра 8',
+    printed: 30 + i,
+    text: 'ф'.repeat(2000),
+  }));
   const t = buildUserTurn({ text: 'Поясни', now: NOW, fragments }).content[0].text;
   assert.match(t, /Фрагменти з підручника, які виділив учень/);
   assert.match(t, /«Алгебра 8», с\. 30:/);

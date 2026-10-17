@@ -63,7 +63,7 @@ export function isSafeLink(url) {
 export const isAllowedApi = (url) => parse(url) === 'api.human.ua';
 
 /** Локальні вікна застосунку: лише власні файли. Мережа заборонена повністю. */
-export const isAllowedUiRequest = (url) => /^(file|devtools):/i.test(url);
+export const isAllowedUiRequest = (url) => /^(file|devtools|hp-file):/i.test(url);
 
 /** Зовнішні посилання відкриваємо в системному браузері лише для відомих доменів і https. */
 export const isAllowedExternal = (url) => {

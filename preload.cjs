@@ -39,6 +39,17 @@ contextBridge.exposeInMainWorld('hd', {
     reset: invoke('ai:reset'),
     onEvent: subscribe('ai:event'),
   },
+  files: {
+    list: invoke('files:list'),
+    import: invoke('files:import'),
+    fromTask: invoke('files:fromTask'),
+    content: invoke('files:content'),
+    save: invoke('files:save'),
+    showInFolder: invoke('files:showInFolder'),
+    openExternal: invoke('files:openExternal'),
+    remove: invoke('files:remove'),
+    clearCache: invoke('files:clearCache'),
+  },
   books: {
     list: invoke('books:list'),
     import: invoke('books:import'),

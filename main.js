@@ -14,12 +14,14 @@ import {
   ipcMain,
   nativeImage,
   nativeTheme,
+  protocol,
   safeStorage,
   session,
   shell,
 } from 'electron';
 import fs from 'node:fs';
 import os from 'node:os';
+import { Readable } from 'node:stream';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
@@ -43,7 +45,12 @@ import { createDemoProvider } from './src/ai/providers/demo.js';
 import { createProvider } from './src/ai/providers/index.js';
 import { createTools } from './src/ai/tools.js';
 import { createLibrary } from './src/books/library.js';
+import { decodeText } from './src/books/extract.js';
 import { parseRef } from './src/books/locate.js';
+import { docxToHtml, parseCsv, pptxSlides, xlsxToSheets, zipList } from './src/files/office.js';
+import { rangeResponse } from './src/files/range.js';
+import { createFileStore } from './src/files/store.js';
+import { STREAMABLE, classifyFile, safeName } from './src/files/types.js';
 import { AI_CONSENT_VERSION } from './src/settings.js';
 import { uk } from './src/uk.js';
 
@@ -72,8 +79,22 @@ app.userAgentFallback = `Mozilla/5.0 (${OS_UA}) AppleWebKit/537.36 (KHTML, like 
 app.setAppUserModelId(app.isPackaged ? 'com.humanplus.app' : 'com.humanplus.app.dev'); // значок і група на панелі завдань Windows, сповіщення
 if (DEMO) app.setPath('userData', app.getPath('userData') + '-demo'); // демо не торкається справжнього кешу й сесії
 if (!app.requestSingleInstanceLock()) app.quit();
+// Власний протокол для потокового відтворення відео/аудіо й показу зображень з файлів учня (з підтримкою Range).
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'hp-file', privileges: { standard: true, secure: true, stream: true } },
+]);
 
-let humanSession, service, settings, tray, mainWin, loginView, client, keys, assistant, library;
+let humanSession,
+  service,
+  settings,
+  tray,
+  mainWin,
+  loginView,
+  client,
+  keys,
+  assistant,
+  library,
+  files;
 let quitting = false;
 let gpuOk = true;
 let miniSaved = null;
@@ -535,6 +556,82 @@ function cleanFragments(list) {
     .filter(Boolean);
 }
 
+/* ---------- Файли (src/files/) ---------- */
+function setupFiles() {
+  files = createFileStore({
+    dir: path.join(app.getPath('userData'), 'files'),
+    cacheLimit: () => settings.filesCacheMb * 1024 * 1024,
+  });
+  // hp-file://f/<id>: лише зображення, відео й аудіо, лише відомі id, лише для вікна застосунку.
+  protocol.handle('hp-file', async (req) => {
+    try {
+      const u = new URL(req.url);
+      const id = u.pathname.replace(/^\//, '');
+      const f = u.hostname === 'f' ? files.get(id) : null;
+      const info = f ? classifyFile(f.name) : null;
+      if (!f || !STREAMABLE.has(info.kind)) return new Response(null, { status: 404 });
+      const file = files.pathOf(id);
+      const size = fs.statSync(file).size;
+      const r = rangeResponse(size, req.headers.get('range'), info.mime);
+      if (r.status === 416) return new Response(null, { status: 416, headers: r.headers });
+      const stream = Readable.toWeb(fs.createReadStream(file, { start: r.start, end: r.end }));
+      return new Response(stream, { status: r.status, headers: r.headers });
+    } catch {
+      return new Response(null, { status: 500 });
+    }
+  });
+}
+
+const TEXT_MAX = 2 * 1024 * 1024;
+/** Вміст файлу для перегляду у вікні, безпечний за побудовою (текст, таблиці, санітизований далі HTML). */
+async function fileContent(id) {
+  const f = files.get(id);
+  if (!f) return null;
+  const read = () => files.read(id);
+  try {
+    switch (f.kind) {
+      case 'text':
+      case 'code': {
+        const b = files.read(id, 50 * 1024 * 1024);
+        if (!b) return { error: 'big' };
+        const text = decodeText(b.subarray(0, TEXT_MAX));
+        return { text, truncated: b.length > TEXT_MAX };
+      }
+      case 'docx':
+        return { html: await docxToHtml(read()) };
+      case 'sheet':
+        return { sheets: await xlsxToSheets(read()) };
+      case 'csv':
+        return { rows: parseCsv(decodeText(files.read(id, 50 * 1024 * 1024) ?? Buffer.alloc(0))) };
+      case 'pptx':
+        return { slides: await pptxSlides(read()) };
+      case 'zip':
+        return { entries: await zipList(read()) };
+      case 'pdf': {
+        const b = read();
+        return b ? { bytes: new Uint8Array(b) } : { error: 'big' };
+      }
+      default:
+        return {};
+    }
+  } catch {
+    return { error: 'parse' };
+  }
+}
+
+/** Копія в «Завантаження» з унікальним ім'ям (файл не запускається). */
+function copyToDownloads(id) {
+  const f = files.get(id);
+  const src = files.pathOf(id);
+  if (!f || !src) return null;
+  const dir = app.getPath('downloads');
+  const { name: base, ext } = path.parse(safeName(f.name));
+  let target = path.join(dir, base + ext);
+  for (let i = 1; fs.existsSync(target); i++) target = path.join(dir, `${base} (${i})${ext}`);
+  fs.copyFileSync(src, target);
+  return target;
+}
+
 function setupAssistant(books = null) {
   keys = createKeyStore({ file: path.join(app.getPath('userData'), 'keys.json'), safeStorage });
   const getProvider = () => {
@@ -628,6 +725,59 @@ function registerIpc() {
     return assistant.send({ text, mode, taskId, fragments: cleanFragments(r.fragments) });
   });
   // Книги: файли обирає учень у системному діалозі; вікно шляхів не передає.
+  // Файли: вікно оперує лише id; шляхи, читання й запис — тут.
+  handle('files:list', () => ({
+    mine: files.list('mine'),
+    cached: files.list('human'),
+    attachments: service.listAttachments().map((a) => ({ ...a, kind: classifyFile(a.name).kind })),
+    usage: files.usage(),
+  }));
+  handle('files:import', async () => {
+    const res = await dialog.showOpenDialog(mainWin, {
+      title: uk.files.importTitle,
+      properties: ['openFile', 'multiSelections'],
+    });
+    return res.canceled ? [] : files.importFiles(res.filePaths);
+  });
+  /** Файл із завдання HUMAN: з кешу або завантаження з files.human.ua (через service → api.js, allowlist). */
+  handle('files:fromTask', async (key, index) => {
+    if (!validKey(key) || !Number.isInteger(index)) return { ok: false, reason: 'unknown' };
+    const att = service.listAttachments().find((a) => a.taskId === key && a.index === index);
+    const cacheKey = `${key}:${index}:${att?.updatedAt ?? 0}`;
+    const hit = files.cached(cacheKey);
+    if (hit) return { ok: true, file: hit };
+    const r = await service.getFile(key, index);
+    if (!r.ok) return { ok: false, reason: r.reason };
+    return { ok: true, file: files.putHuman(cacheKey, r.name, r.buffer) };
+  });
+  handle('files:content', (id) => fileContent(id));
+  handle('files:save', async (id) => {
+    const f = files.get(id);
+    if (!f) return { ok: false };
+    const res = await dialog.showSaveDialog(mainWin, {
+      defaultPath: path.join(app.getPath('downloads'), safeName(f.name)),
+    });
+    if (res.canceled || !res.filePath) return { ok: false, canceled: true };
+    fs.copyFileSync(files.pathOf(id), res.filePath);
+    return { ok: true, name: path.basename(res.filePath) };
+  });
+  handle('files:showInFolder', (id) => {
+    const target = copyToDownloads(id);
+    if (target) shell.showItemInFolder(target);
+    return target ? { ok: true, name: path.basename(target) } : { ok: false };
+  });
+  /** «Відкрити зовні» — лише для відео й аудіо, які не грає вбудований програвач. */
+  handle('files:openExternal', async (id) => {
+    const f = files.get(id);
+    if (!f || !['video', 'audio'].includes(f.kind)) return { ok: false };
+    const dir = path.join(app.getPath('temp'), 'Human Plus media');
+    fs.mkdirSync(dir, { recursive: true });
+    const target = path.join(dir, `${f.id}.${f.ext}`);
+    if (!fs.existsSync(target)) fs.copyFileSync(files.pathOf(id), target);
+    return { ok: !(await shell.openPath(target)) };
+  });
+  handle('files:remove', (id) => files.remove(id));
+  handle('files:clearCache', () => (files.clearCache(), files.usage()));
   handle('books:list', () => library.list());
   handle('books:import', async (folder) => {
     const res = await dialog.showOpenDialog(mainWin, {
@@ -732,6 +882,7 @@ app.whenReady().then(async () => {
     demo: DEMO ? createDemo(nowSec()) : null,
   });
   setupLibrary();
+  setupFiles();
   setupAssistant(library);
   service.onChange((st) => {
     if (process.env.HD_LOG_BLOCKED && client?.stats.lastNetworkError)

@@ -306,6 +306,34 @@ export function createService({
     }
   }
 
+  /** Файли з уже відкритих завдань і матеріалів (без адрес) для вкладки «Файли». Нових запитів не робить. */
+  function listAttachments() {
+    const out = [];
+    for (const [key, e] of Object.entries(texts)) {
+      const k = /^L\d+$/.test(key) ? key : Number(key);
+      const task = typeof k === 'number' ? state.snapshot?.tasks.find((x) => x.id === k) : null;
+      const lesson = typeof k === 'string' ? lessonTaskByKey(k) : null;
+      if (!task && !lesson) continue;
+      const subject =
+        task?.subject ??
+        state.snapshot?.lessons.find((l) => l.lessonTasks?.some((x) => x.id === k))?.subject ??
+        '';
+      (e.blocks ?? []).forEach((b, index) => {
+        if (b.kind === 'file')
+          out.push({
+            taskId: k,
+            index,
+            name: b.name,
+            size: b.size,
+            subject,
+            theme: task?.themeTitle ?? lesson?.lt.title ?? '',
+            updatedAt: e.updatedAt,
+          });
+      });
+    }
+    return out;
+  }
+
   /** Адреса посилання з блоку (лише безпечна); у вікно не віддається. */
   const getLink = (taskId, index) => blockOf(taskId, index, 'link')?.url ?? null;
 
@@ -387,6 +415,7 @@ export function createService({
     getImage,
     getFile,
     getLink,
+    listAttachments,
     getWeek,
     verifyStudent,
     wipe,

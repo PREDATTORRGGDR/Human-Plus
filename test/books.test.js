@@ -272,5 +272,11 @@ test('імпорт папки: рекурсивно, лише книги, пов
   assert.deepEqual([r.added, r.skipped, r.failed], [2, 0, 0]);
   const again = await lib.importFolder(src);
   assert.deepEqual([again.added, again.skipped], [0, 2]);
-  assert.deepEqual(lib.list().map((b) => b.title).sort(), ['Історія', 'Фізика']);
+  assert.deepEqual(
+    lib
+      .list()
+      .map((b) => b.title)
+      .sort(),
+    ['Історія', 'Фізика'],
+  );
 });
