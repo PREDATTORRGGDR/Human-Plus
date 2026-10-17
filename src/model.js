@@ -59,7 +59,15 @@ export function tasksView(
   label,
 ) {
   const list = s.tasks
-    .filter((t) => (status === 'all' ? true : status === 'done' ? DONE.has(t.status) : t.pending))
+    .filter((t) =>
+      status === 'all'
+        ? true
+        : status === 'done'
+          ? DONE.has(t.status)
+          : status === 'pending'
+            ? t.pending
+            : t.status === status,
+    )
     .filter((t) => !subject || t.subjectKey === subject)
     .filter((t) => t.deadline == null || (t.deadline >= from && t.deadline < to))
     .sort(byDeadline);

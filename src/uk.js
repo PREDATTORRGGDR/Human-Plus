@@ -4,9 +4,8 @@ export const uk = {
   tagline: 'Застосунок для учнів HUMAN Школа',
   tabs: {
     today: 'Сьогодні',
-    next: 'На наступний урок',
-    tasks: 'Усі завдання',
-    schedule: 'Розклад',
+    calendar: 'Календар',
+    tasks: 'Завдання',
     grades: 'Оцінки',
     assistant: 'Асистент',
     books: 'Книги',
@@ -225,7 +224,13 @@ export const uk = {
   tray: { tooltip: (n) => (n ? `Human Plus — невиконаних: ${n}` : 'Human Plus') },
   errors: { generic: 'Щось пішло не так.' },
   days: { today: 'Сьогодні', tomorrow: 'Завтра' },
-  grades: { subject: 'Предмет', grade: 'Оцінка', recent: 'Останні' },
+  grades: { subject: 'Предмет', grade: 'Оцінка', recent: 'Останні', count: 'Усього' },
+  calendar: {
+    hw: (n) => `ДЗ: ${n}`,
+    dueTitle: 'Здано / усього завдань із дедлайном цього дня',
+    legend:
+      'Натисніть на урок, щоб відкрити його тему, матеріали й домашнє завдання. Число біля дня — здано / усього завдань із дедлайном.',
+  },
   debug: { requests: (n) => `Запитів за останнє оновлення: ${n}` },
   files: {
     importTitle: 'Додати файли',

@@ -128,14 +128,12 @@ export function createOpenAiProvider({
         }
         if (ch.finish_reason) finish = ch.finish_reason;
       }
-      const toolBlocks = calls
-        .filter(Boolean)
-        .map((c, k) => ({
-          type: 'tool_use',
-          id: c.id || `call_${k}`,
-          name: c.name,
-          input: parseArgs(c.args),
-        }));
+      const toolBlocks = calls.filter(Boolean).map((c, k) => ({
+        type: 'tool_use',
+        id: c.id || `call_${k}`,
+        name: c.name,
+        input: parseArgs(c.args),
+      }));
       const stopReason = refused
         ? 'refusal'
         : (FINISH[finish] ?? (toolBlocks.length ? 'tool_use' : 'end'));

@@ -690,6 +690,8 @@ h2.group small {
 }
 .pills {
   display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
   gap: 2px;
   padding: 3px;
   border-radius: 12px;
@@ -2242,4 +2244,92 @@ html.opaque .bubble {
 }
 .warn-box .row {
   justify-content: center;
+}
+
+/* Завдання сіткою карток, календар-тиждень, журнал оцінок */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--sp-3);
+  align-items: start;
+  margin-bottom: var(--sp-3);
+}
+.tile {
+  border-left: 3px solid var(--sj, var(--accent));
+  overflow: hidden;
+}
+.tile .tasks {
+  margin: 0;
+}
+.tile.late {
+  border-left-color: var(--st-overdue);
+}
+.pill-n {
+  margin-left: 6px;
+  opacity: 0.75;
+  font-size: var(--fs-1);
+}
+button.slot {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border: 0;
+  border-left: 3px solid var(--sj, var(--accent));
+}
+button.slot:hover {
+  background: rgb(var(--glass-rgb) / var(--glass-a2));
+}
+.slot-theme {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.col h3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.due {
+  font-size: var(--fs-1);
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 999px;
+  color: var(--st-accepted-text);
+  background: color-mix(in srgb, var(--st-accepted) 16%, transparent);
+}
+.due.left {
+  color: var(--st-submitted-text);
+  background: color-mix(in srgb, var(--st-submitted) 16%, transparent);
+}
+.grades-wrap {
+  overflow-x: auto;
+  padding: var(--sp-2);
+}
+.journal th.subj-col {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--solid-1);
+  white-space: nowrap;
+  text-align: left;
+}
+.journal thead th {
+  white-space: nowrap;
+}
+.journal td {
+  text-align: center;
+  min-width: 52px;
+}
+.journal td .grade + .grade {
+  margin-left: 4px;
+}
+.journal tbody tr:hover td,
+.journal tbody tr:hover th {
+  background: rgb(var(--glass-rgb) / var(--glass-a2));
+}
+.tomorrow {
+  margin-top: var(--sp-5);
 }

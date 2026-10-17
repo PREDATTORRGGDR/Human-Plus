@@ -39,7 +39,7 @@ import { uk } from './uk.js';
 const api = window.hd;
 const root = document.getElementById('app');
 const nowSec = () => Math.floor(Date.now() / 1000);
-const TABS = ['today', 'next', 'tasks', 'schedule', 'grades', 'assistant', 'books', 'files'];
+const TABS = ['today', 'calendar', 'tasks', 'grades', 'assistant', 'books', 'files'];
 
 let st = null;
 let settings = {};
@@ -338,9 +338,8 @@ function screen() {
     default:
       return {
         today: todayTab,
-        next: nextTab,
+        calendar: calendarTab,
         tasks: tasksTab,
-        schedule: scheduleTab,
         grades: gradesTab,
         assistant: () => assistant.view(),
         books: () => books.view(),
@@ -519,6 +518,7 @@ function todayTab() {
   );
   if (!v.lessons.length) {
     out.push(h('p', { class: 'empty', text: v.weekend ? uk.lesson.weekend : uk.states.emptyDay }));
+    if (isToday) out.push(tomorrowSection());
     return out;
   }
   if (isToday) {
@@ -567,6 +567,7 @@ function todayTab() {
         : h('p', { class: 'card pad meta', text: uk.states.noHomework }),
     ),
   );
+  if (isToday) out.push(tomorrowSection());
   return out;
 }
 
@@ -597,19 +598,19 @@ function nextItem({ lesson: l, tasks }) {
   );
 }
 
-function nextTab() {
+/** Блок «На завтра» внизу вкладки «Сьогодні»: найближчі уроки завтра й невиконане до них. */
+function tomorrowSection() {
   const v = nextView(st.snapshot, nowSec());
-  if (!v.tomorrow.length && !v.rest.length)
-    return h('p', { class: 'empty', text: uk.states.emptyNext });
-  return [
-    v.tomorrow.length
-      ? [h('h2', { class: 'group' }, uk.tomorrowBlock), v.tomorrow.map(nextItem)]
-      : null,
-    v.rest.length ? [h('h2', { class: 'group' }, uk.nextRest), v.rest.map(nextItem)] : null,
-  ];
+  if (!v.tomorrow.length) return null;
+  return h(
+    'section',
+    { class: 'tomorrow', 'aria-labelledby': 'tomorrow-h' },
+    h('h2', { class: 'group', id: 'tomorrow-h' }, uk.tomorrowBlock),
+    v.tomorrow.map(nextItem),
+  );
 }
 
-/* ---------- Усі завдання ---------- */
+/* ---------- Завдання: картки зі статусом і дедлайном, категорії як у щоденнику ---------- */
 const select = (key, value, options, onchange) =>
   h(
     'select',
@@ -617,6 +618,17 @@ const select = (key, value, options, onchange) =>
     options.map(([v, label]) =>
       h('option', { value: v, selected: v === value ? true : null }, label),
     ),
+  );
+
+/** Картка завдання в сітці: предмет, тема, статус, дедлайн; розгортання показує повний вміст і кнопки асистента. */
+const taskTile = (t) =>
+  h(
+    'article',
+    {
+      class: 'card hover tile' + (t.status === 'overdue' ? ' late' : ''),
+      style: `--sj:${subjectColor(t.subjectKey)}`,
+    },
+    h('ul', { class: 'tasks' }, taskCard(t, { ...tctx, showSubject: true })),
   );
 
 function tasksTab() {
@@ -631,6 +643,11 @@ function tasksTab() {
         : formatDay(dayStart(t.deadline)),
   );
   const set = (k) => (v) => go({ filter: { ...f, [k]: v } });
+  const count = (s) =>
+    tasksView(st.snapshot, { ...f, ...range, status: s }, () => '').reduce(
+      (n, g) => n + g.tasks.length,
+      0,
+    );
   const bar = h(
     'div',
     { class: 'bar' },
@@ -639,11 +656,22 @@ function tasksTab() {
       f.status,
       [
         ['pending', uk.filters.pending],
+        ['assigned', uk.status.assigned],
+        ['overdue', uk.status.overdue],
+        ['submitted', uk.status.submitted],
+        ['accepted', uk.status.accepted],
+        ['returned', uk.status.returned],
         ['all', uk.filters.all],
-        ['done', uk.filters.done],
-      ],
+      ].map(([v, label]) => [
+        v,
+        [label, h('span', { class: 'pill-n num', text: String(count(v)) })],
+      ]),
       set('status'),
     ),
+  );
+  const bar2 = h(
+    'div',
+    { class: 'bar' },
     pills(
       'f-group',
       f.group,
@@ -679,9 +707,10 @@ function tasksTab() {
       ),
     ),
   );
-  if (!groups.length) return [bar, h('p', { class: 'empty', text: uk.states.empty })];
+  if (!groups.length) return [bar, bar2, h('p', { class: 'empty', text: uk.states.empty })];
   return [
     bar,
+    bar2,
     groups.map((g) => {
       const late =
         f.group === 'date' &&
@@ -695,30 +724,40 @@ function tasksTab() {
           g.label,
           h('small', { text: countText(g.tasks.length) }),
         ),
-        h(
-          'div',
-          { class: 'card' },
-          h(
-            'ul',
-            { class: 'tasks' },
-            g.tasks.map((t) => taskCard(t, { ...tctx, showSubject: true })),
-          ),
-        ),
+        h('div', { class: 'tiles' }, g.tasks.map(taskTile)),
       ];
     }),
   ];
 }
 
-/* ---------- Розклад ---------- */
-function slot(l, t, isToday, next) {
+/* ---------- Календар: тиждень з уроками й дедлайнами ---------- */
+function slot(l, t, isToday, next, hw) {
   const now = isToday && !l.cancelled && l.start <= t && t < l.end;
   const between = isToday && t >= l.end && next && t < next.start;
   return h(
-    'div',
-    { class: 'slot' + (l.cancelled ? ' cancelled' : '') + (now ? ' now' : '') },
+    'button',
+    {
+      class: 'slot' + (l.cancelled ? ' cancelled' : '') + (now ? ' now' : ''),
+      style: `--sj:${subjectColor(l.subjectKey)}`,
+      'data-k': `slot-${l.id}`,
+      title: l.title || l.subject,
+      // клік відкриває день на вкладці «Сьогодні» з розгорнутим уроком
+      onclick: () => {
+        ui.expandedLessons.add(l.id);
+        go({ tab: 'today', dayOffset: Math.round((dayStart(l.start) - dayStart(t)) / 86400) });
+      },
+    },
     h('div', { class: 'meta num', text: `${l.period ? l.period + ' · ' : ''}${lessonTime(l)}` }),
     h('div', { class: 'name' }, subjectDot(l.subjectKey), l.subject),
-    h('div', { class: 'row' }, lessonBadges(l)),
+    l.title ? h('div', { class: 'meta slot-theme', text: l.title }) : null,
+    h(
+      'div',
+      { class: 'row' },
+      lessonBadges(l),
+      hw
+        ? h('span', { class: 'badge', 'data-s': 'assigned' }, icon('check', 12), uk.calendar.hw(hw))
+        : null,
+    ),
     now
       ? h('span', {
           class: 'nowline',
@@ -732,7 +771,7 @@ function slot(l, t, isToday, next) {
   );
 }
 
-function scheduleTab() {
+function calendarTab() {
   const t = nowSec();
   const today = dayStart(t);
   const start = addDays(weekStart(t), ui.weekOffset * 7);
@@ -772,12 +811,39 @@ function scheduleTab() {
       { class: 'week' },
       days.map((d) => {
         const list = lessons.filter((l) => l.start >= d && l.start < addDays(d, 1));
+        const due = st.snapshot.tasks.filter(
+          (x) => x.deadline != null && x.deadline >= d && x.deadline < addDays(d, 1),
+        );
+        const left = due.filter((x) => x.pending).length;
         return h(
           'section',
           { class: 'card col' + (d === today ? ' today' : ''), 'aria-label': formatDay(d) },
-          h('h3', { text: `${weekdayShort(d)}, ${formatShortDay(d).replace(/^[^,]*,\s*/, '')}` }),
+          h(
+            'h3',
+            {},
+            h('span', {
+              text: `${weekdayShort(d)}, ${formatShortDay(d).replace(/^[^,]*,\s*/, '')}`,
+            }),
+            due.length
+              ? h('span', {
+                  class: 'due num' + (left ? ' left' : ''),
+                  title: uk.calendar.dueTitle,
+                  text: `${due.length - left}/${due.length}`,
+                })
+              : null,
+          ),
           list.length
-            ? list.map((l, i) => slot(l, t, d === today, list[i + 1]))
+            ? list.map((l, i) =>
+                slot(
+                  l,
+                  t,
+                  d === today,
+                  list[i + 1],
+                  l.themeId == null
+                    ? 0
+                    : st.snapshot.tasks.filter((x) => x.themeId === l.themeId).length,
+                ),
+              )
             : h('div', {
                 class: 'meta',
                 text: weekends.includes(d) ? uk.lesson.weekend : uk.lesson.noLessons,
@@ -785,33 +851,73 @@ function scheduleTab() {
         );
       }),
     ),
+    h('p', { class: 'meta', text: uk.calendar.legend }),
   ];
 }
 
-/* ---------- Оцінки ---------- */
+/* ---------- Оцінки: таблиця «предмет × дата» ---------- */
+const dm = (d) => {
+  const p = kyivParts(d);
+  return `${String(p.d).padStart(2, '0')}.${String(p.m).padStart(2, '0')}`;
+};
 function gradesTab() {
   const list = gradesBySubject(st.snapshot);
   if (!list.length) return h('p', { class: 'empty', text: uk.states.noGrades });
+  const dates = [...new Set(st.snapshot.grades.map((g) => dayStart(g.date)))].sort((a, b) => a - b);
   return [
     h('p', { class: 'meta', text: uk.states.gradesNote }),
-    list.map((g) =>
+    h(
+      'div',
+      { class: 'card grades-wrap' },
       h(
-        'section',
-        { class: 'card' },
+        'table',
+        { class: 'gtable journal' },
         h(
-          'div',
-          { class: 'cardhead' },
-          h('h2', { class: 'name' }, subjectDot(g.grades[0].subjectKey), g.subject),
+          'thead',
+          {},
+          h(
+            'tr',
+            {},
+            h('th', { class: 'subj-col', scope: 'col', text: uk.grades.subject }),
+            dates.map((d) =>
+              h('th', {
+                class: 'num',
+                scope: 'col',
+                title: formatDay(d),
+                text: dm(d),
+              }),
+            ),
+            h('th', { class: 'num', scope: 'col', text: uk.grades.count }),
+          ),
         ),
         h(
-          'div',
-          { class: 'grades' },
-          g.grades.map((x) =>
+          'tbody',
+          {},
+          list.map((g) =>
             h(
-              'span',
-              { class: 'chip', title: x.kind },
-              h('span', { class: 'grade', text: x.value ?? '—' }),
-              ` · ${x.kind} · ${formatShortDay(x.date)}`,
+              'tr',
+              {},
+              h(
+                'th',
+                { class: 'subj-col', scope: 'row' },
+                subjectDot(g.grades[0].subjectKey),
+                g.subject,
+              ),
+              dates.map((d) => {
+                const cell = g.grades.filter((x) => dayStart(x.date) === d);
+                return h(
+                  'td',
+                  { class: 'num' },
+                  cell.map((x) =>
+                    h('span', {
+                      class: 'grade',
+                      title: `${x.kind} · ${formatDay(d)}`,
+                      text: x.value ?? '—',
+                    }),
+                  ),
+                );
+              }),
+              h('td', { class: 'num meta', text: String(g.grades.length) }),
             ),
           ),
         ),

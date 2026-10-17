@@ -56,7 +56,7 @@ export async function takeShots({ app, mainWin, patchSettings, service, dir }) {
     mode(theme, glass);
     const tag = `${theme}-${glass === 'on' ? 'glass' : 'opaque'}`;
     for (const t of glass === 'on' && theme === 'dark'
-      ? ['today', 'next', 'tasks', 'schedule', 'grades']
+      ? ['today', 'calendar', 'tasks', 'grades', 'assistant', 'books', 'files']
       : ['today', 'tasks']) {
       await tab(t);
       if (t === 'today' || t === 'tasks') await expandFirst(t);
