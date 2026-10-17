@@ -2573,6 +2573,13 @@ html.glass .lcard {
   font-size: var(--fs-1);
   margin-top: 2px;
 }
+.lcard-time .num,
+.lcard-n {
+  white-space: nowrap;
+}
+.lcard-time {
+  flex-wrap: wrap;
+}
 .lcard-n {
   border: 1px solid rgb(var(--line-rgb) / 0.25);
   border-radius: 4px;

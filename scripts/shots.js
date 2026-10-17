@@ -71,6 +71,14 @@ export async function takeShots({ app, mainWin, patchSettings, service, dir }) {
     }
   }
 
+  // Сторінка уроку з домашнім завданням
+  mode('dark', 'on');
+  await tab('calendar');
+  await js(`document.querySelector('.lcard[data-state="pending"] .lcard-main')?.click()`);
+  await wait(800);
+  await shot('dark-glass-lesson');
+  await js(`document.querySelector('[data-k="lesson-back"]')?.click()`);
+
   // Панель налаштувань (світла й темна)
   for (const theme of ['dark', 'light']) {
     mode(theme, 'on');

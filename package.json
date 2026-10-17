@@ -1,8 +1,8 @@
 {
   "name": "human-plus",
   "productName": "Human Plus",
-  "version": "1.1.0",
-  "description": "Human Plus — застосунок для учня HUMAN Школа: домашні завдання, розклад і оцінки на одному екрані. Лише читання.",
+  "version": "1.2.0",
+  "description": "Human Plus — застосунок для учня HUMAN Школа: розклад, домашні завдання, оцінки, підручники, файли й ШІ-асистент. До HUMAN лише читання.",
   "main": "main.js",
   "type": "module",
   "license": "UNLICENSED",
@@ -62,7 +62,12 @@
       "build/tray.png",
       "build/tray@2x.png",
       "build/tray@3x.png",
-      "node_modules/dompurify/dist/purify.es.mjs"
+      "node_modules/dompurify/dist/purify.es.mjs",
+      "!node_modules/pdfjs-dist/{web,image_decoders,types}/**",
+      "!node_modules/pdfjs-dist/**/*.map",
+      "!node_modules/pdfjs-dist/**/*.min.mjs",
+      "!**/*.d.ts",
+      "!**/*.d.mts"
     ],
     "win": {
       "target": [
@@ -84,7 +89,7 @@
     },
     "artifactName": "${productName}-Setup-${version}.exe",
     "extraMetadata": {
-      "description": "Human Plus — застосунок для учня HUMAN Школа: домашні завдання, розклад і оцінки на одному екрані. Лише читання."
+      "description": "Human Plus — застосунок для учня HUMAN Школа: розклад, домашні завдання, оцінки, підручники, файли й ШІ-асистент. До HUMAN лише читання."
     },
     "afterPack": "scripts/after-pack.cjs",
     "publish": null
