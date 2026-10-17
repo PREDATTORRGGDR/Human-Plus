@@ -2,6 +2,8 @@
 <html lang="uk" spellcheck="true">
   <head>
     <meta charset="utf-8" />
+    <!-- Вікно в мережу не ходить: HUMAN, files.human.ua і сервіси ШІ (api.anthropic.com, api.openai.com,
+         generativelanguage.googleapis.com) викликає лише main-процес, тому їх тут немає (див. src/allowlist.js). -->
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"

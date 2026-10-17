@@ -70,3 +70,22 @@ export const isAllowedExternal = (url) => {
   const h = parse(url);
   return h !== null && matches(h, EXTERNAL);
 };
+
+/** Хости провайдерів ШІ. Запити до них робить лише main-процес (вікно без мережі). */
+export const AI_HOSTS = {
+  anthropic: 'api.anthropic.com',
+  openai: 'api.openai.com',
+  gemini: 'generativelanguage.googleapis.com',
+};
+
+/**
+ * Куди можна відправити запит до ШІ: фіксовані хости провайдерів або хост OpenAI-сумісного сервісу,
+ * який учень сам указав у налаштуваннях (лише публічний https, див. isSafeLink).
+ */
+export function isAllowedAi(url, { openaiBase = null } = {}) {
+  const h = parse(url);
+  if (h === null) return false;
+  if (Object.values(AI_HOSTS).includes(h)) return true;
+  if (!openaiBase || !isSafeLink(openaiBase)) return false;
+  return parse(openaiBase) === h && isSafeLink(url);
+}

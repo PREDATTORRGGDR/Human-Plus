@@ -336,6 +336,23 @@ export function createService({
     return data;
   }
 
+  /**
+   * Свіжа перевірка ролі «учень» (окремий GET system/info) перед запитом до ШІ. Будь-яка помилка → false (fail closed).
+   * У демо-режимі учень вигаданий, тож true.
+   */
+  async function verifyStudent() {
+    if (demo) return state.status === 'ready';
+    if (state.status !== 'ready') return false;
+    try {
+      const id = await getUid();
+      if (id == null || id !== uid) return false;
+      return isStudent(await fetchSystemInfo(client, id), id);
+    } catch (e) {
+      if (e instanceof SessionExpiredError) set({ status: 'expired', snapshot: null });
+      return false;
+    }
+  }
+
   function wipe() {
     cache.clear();
     texts = {};
@@ -371,6 +388,7 @@ export function createService({
     getFile,
     getLink,
     getWeek,
+    verifyStudent,
     wipe,
     resume: () => {
       failures = 0;

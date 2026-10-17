@@ -2,6 +2,7 @@
 // і компактний міні-режим «Що задано на завтра» (те саме вікно, без додаткових).
 // Дані приходять готовими зі стану main-процесу; тут лише вибірка (model.js) і відмальовування.
 import DOMPurify from '../node_modules/dompurify/dist/purify.es.mjs';
+import { createAssistantUI } from './assistant-ui.js';
 import { icon, logo } from './icons.js';
 import { dayView, gradesBySubject, nextView, subjectsOf, tasksView } from './model.js';
 import { createSanitizer } from './sanitize.js';
@@ -36,7 +37,7 @@ import { uk } from './uk.js';
 const api = window.hd;
 const root = document.getElementById('app');
 const nowSec = () => Math.floor(Date.now() / 1000);
-const TABS = ['today', 'next', 'tasks', 'schedule', 'grades'];
+const TABS = ['today', 'next', 'tasks', 'schedule', 'grades', 'assistant'];
 
 let st = null;
 let settings = {};
@@ -58,9 +59,20 @@ const ui = {
 
 const tctx = { expanded: ui.expanded, api, sanitize: createSanitizer(DOMPurify), texts: null };
 tctx.texts = createTexts(api, (t) => {
-  const inner = document.querySelector(`[data-task="${t.id}"] .inner`);
-  if (inner && ui.expanded.has(t.id)) inner.replaceChildren(taskBody(t, tctx));
+  for (const inner of document.querySelectorAll(`[data-task="${t.id}"] .inner`))
+    if (ui.expanded.has(t.id)) inner.replaceChildren(taskBody(t, tctx));
 });
+const assistant = createAssistantUI({
+  api,
+  tctx,
+  getSnapshot: () => st?.snapshot,
+  rerender: () => render(),
+});
+/** Кнопки «Пояснити» / «Дай відповідь для зошита»: чат відкривається поруч із контентом. */
+tctx.onAsk = (mode, task) => {
+  if (ui.tab !== 'assistant' && !settings.aiPanel) api.setSettings({ aiPanel: true });
+  assistant.ask({ mode, taskId: task.id });
+};
 
 const btn = (label, onclick, props = {}) => h('button', { class: 'btn', onclick, ...props }, label);
 const iconBtn = (name, label, onclick, props = {}) =>
@@ -159,6 +171,18 @@ function shell() {
       { 'data-k': 'mini' },
     ),
   );
+  if (ready && !mini && ui.tab !== 'assistant')
+    tools.append(
+      tbtn(
+        'panel',
+        uk.buttons.assistantPanel,
+        () => api.setSettings({ aiPanel: !settings.aiPanel }),
+        {
+          'data-k': 'ai-panel',
+          'aria-pressed': String(!!settings.aiPanel),
+        },
+      ),
+    );
   if (!mini)
     tools.append(tbtn('settings', uk.buttons.settings, openSettings, { 'data-k': 'settings' }));
   const top = h(
@@ -203,7 +227,21 @@ function shell() {
   );
   if (ui.animate)
     page.querySelectorAll(':scope > *').forEach((c, i) => c.style.setProperty('--i', String(i)));
-  return h('div', { class: 'shell' }, top, h('main', { id: 'main', tabindex: '-1' }, page));
+  const main = h('main', { id: 'main', tabindex: '-1' }, page);
+  const side =
+    ready && !mini && settings.aiPanel && ui.tab !== 'assistant'
+      ? h(
+          'aside',
+          { class: 'side-chat', 'aria-label': uk.ai.title },
+          assistant.view({ compact: true, onClose: () => api.setSettings({ aiPanel: false }) }),
+        )
+      : null;
+  return h(
+    'div',
+    { class: 'shell' + (ui.tab === 'assistant' ? ' full-chat' : '') },
+    top,
+    side ? h('div', { class: 'split' }, main, side) : main,
+  );
 }
 
 function banners() {
@@ -270,6 +308,7 @@ function screen() {
         tasks: tasksTab,
         schedule: scheduleTab,
         grades: gradesTab,
+        assistant: () => assistant.view(),
       }[ui.tab]();
   }
 }
@@ -985,6 +1024,7 @@ function openSettings() {
           }),
         ),
       ),
+      assistantSettings(set),
       group(
         uk.settings.notifyTitle,
         row(
@@ -1018,6 +1058,57 @@ function openSettings() {
           ),
         ),
       ),
+    ),
+  );
+}
+
+function assistantSettings(set) {
+  const s = assistant.status();
+  const a = uk.ai.settings;
+  const modelKey = {
+    anthropic: 'aiModelAnthropic',
+    openai: 'aiModelOpenai',
+    gemini: 'aiModelGemini',
+  }[settings.aiProvider];
+  const text = (key, label, value, hint) =>
+    row(
+      label,
+      h('input', {
+        type: 'text',
+        class: 'text-in',
+        value: value ?? '',
+        spellcheck: 'false',
+        'aria-label': label,
+        'data-k': key,
+        onchange: (e) => set({ [key]: e.target.value.trim() }),
+      }),
+      hint,
+      true,
+    );
+  return group(
+    a.title,
+    row(
+      a.provider,
+      select(
+        'aiProvider',
+        settings.aiProvider,
+        Object.entries(uk.ai.providers),
+        async (v) => (await set({ aiProvider: v }), assistant.refreshStatus()),
+      ),
+    ),
+    text(modelKey, a.model, settings[modelKey]),
+    settings.aiProvider === 'openai'
+      ? text('aiOpenaiBase', a.base, settings.aiOpenaiBase, a.baseHint)
+      : null,
+    h('div', { class: 'srow col' }, assistant.keyForm(settings.aiProvider)),
+    row(
+      a.consent,
+      s?.consent
+        ? btn(a.revoke, async () => (await api.ai.consent(false), assistant.refreshStatus()), {
+            class: 'btn small',
+            'data-k': 'ai-revoke',
+          })
+        : h('span', { class: 'meta', text: a.notGiven }),
     ),
   );
 }
@@ -1073,6 +1164,7 @@ initSpotlight();
 document.title = uk.appName;
 [st, settings] = await Promise.all([api.getState(), api.getSettings()]);
 applySettings(settings);
+await assistant.init();
 api.onState((s) => {
   st = s;
   render();

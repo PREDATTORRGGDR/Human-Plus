@@ -66,14 +66,20 @@ test('у джерелах немає URL-літералів на сторонн�
   const files = [
     'main.js',
     'preload.cjs',
-    ...fs.readdirSync(path.join(root, 'src')).map((f) => 'src/' + f),
+    ...fs
+      .readdirSync(path.join(root, 'src'), { recursive: true })
+      .map((f) => 'src/' + String(f).replaceAll(path.sep, '/')),
   ].filter((f) => /\.(js|cjs|html|css)$/.test(f));
   const allowed =
     /^(([a-z0-9-]+\.)*human\.ua|zoom\.us|www\.gstatic\.com|meet\.google\.com|teams\.microsoft\.com|www\.w3\.org|login\.microsoftonline\.com|(www\.)?example\.org)$/;
+  // Хости ШІ дозволені лише в модулі ШІ, allowlist і налаштуваннях (типова адреса OpenAI-сумісного сервісу).
+  const ai = /^(api\.anthropic\.com|api\.openai\.com|generativelanguage\.googleapis\.com)$/;
+  const aiFile = (f) =>
+    f.startsWith('src/ai/') || f === 'src/allowlist.js' || f === 'src/settings.js';
   for (const f of files) {
     const text = fs.readFileSync(path.join(root, f), 'utf8');
     for (const m of text.matchAll(/https?:\/\/([a-z0-9.-]+)/gi))
-      assert.match(m[1], allowed, `${f}: ${m[0]}`);
+      assert.ok(allowed.test(m[1]) || (aiFile(f) && ai.test(m[1])), `${f}: ${m[0]}`);
   }
   for (const page of ['index.html']) {
     const html = fs.readFileSync(path.join(root, 'src', page), 'utf8');

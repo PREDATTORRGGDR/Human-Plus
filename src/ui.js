@@ -257,6 +257,33 @@ export function taskBody(t, ctx) {
     );
   else if (!r.blocks.length) body.append(h('p', { class: 'meta', text: uk.states.noContent }));
   else for (const b of r.blocks) body.append(renderBlock(b, t, ctx));
+  if (ctx.onAsk && t.kind !== 'lesson')
+    body.append(
+      h(
+        'div',
+        { class: 'ask-row' },
+        h(
+          'button',
+          {
+            class: 'btn small',
+            'data-k': `ask-explain-${t.id}`,
+            onclick: () => ctx.onAsk('explain', t),
+          },
+          icon('sparkles', 12),
+          uk.buttons.explain,
+        ),
+        h(
+          'button',
+          {
+            class: 'btn small',
+            'data-k': `ask-notebook-${t.id}`,
+            onclick: () => ctx.onAsk('notebook', t),
+          },
+          icon('pencil', 12),
+          uk.buttons.notebook,
+        ),
+      ),
+    );
   return body;
 }
 

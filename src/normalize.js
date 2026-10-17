@@ -166,14 +166,12 @@ export function normalizeCalendar(raw, { now, from, to, studentTasks = null }) {
   for (const lt of arr(r.lessonTasks)) {
     if (!isNum(lt?.id) || !isNum(lt.theme_id)) continue;
     if (!lessonTasksByTheme.has(lt.theme_id)) lessonTasksByTheme.set(lt.theme_id, []);
-    lessonTasksByTheme
-      .get(lt.theme_id)
-      .push({
-        id: `L${lt.id}`,
-        title: typeof lt.title === 'string' ? lt.title : '',
-        typeName: typeof lt.type?.name === 'string' && lt.type.name ? lt.type.name : 'Заняття',
-        updatedAt: isNum(lt.updated_at) ? lt.updated_at : 0,
-      });
+    lessonTasksByTheme.get(lt.theme_id).push({
+      id: `L${lt.id}`,
+      title: typeof lt.title === 'string' ? lt.title : '',
+      typeName: typeof lt.type?.name === 'string' && lt.type.name ? lt.type.name : 'Заняття',
+      updatedAt: isNum(lt.updated_at) ? lt.updated_at : 0,
+    });
   }
 
   /** @type {Lesson[]} */

@@ -13,6 +13,7 @@ import {
   ipcMain,
   nativeImage,
   nativeTheme,
+  safeStorage,
   session,
   shell,
 } from 'electron';
@@ -34,6 +35,13 @@ import { deadlinesOn, pendingCount } from './src/model.js';
 import { createFileCache, createService } from './src/service.js';
 import { DEFAULTS, validateSettings } from './src/settings.js';
 import { addDays, dayStart, plural } from './src/time.js';
+import { createAssistant } from './src/ai/agent.js';
+import { AiError } from './src/ai/errors.js';
+import { PROVIDERS, createKeyStore, redactSecrets } from './src/ai/keys.js';
+import { createDemoProvider } from './src/ai/providers/demo.js';
+import { createProvider } from './src/ai/providers/index.js';
+import { createTools } from './src/ai/tools.js';
+import { AI_CONSENT_VERSION } from './src/settings.js';
 import { uk } from './src/uk.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -62,7 +70,7 @@ app.setAppUserModelId(app.isPackaged ? 'com.humanplus.app' : 'com.humanplus.app.
 if (DEMO) app.setPath('userData', app.getPath('userData') + '-demo'); // демо не торкається справжнього кешу й сесії
 if (!app.requestSingleInstanceLock()) app.quit();
 
-let humanSession, service, settings, tray, mainWin, loginView, client;
+let humanSession, service, settings, tray, mainWin, loginView, client, keys, assistant;
 let quitting = false;
 let gpuOk = true;
 let miniSaved = null;
@@ -257,6 +265,7 @@ async function logout() {
     await humanSession.clearAuthCache();
   }
   service.wipe();
+  assistant?.reset();
 }
 
 const DANGEROUS = /\.(exe|msi|bat|cmd|com|scr|ps1|vbs|vbe|js|jse|wsf|hta|jar|lnk|reg|dll)$/i;
@@ -293,7 +302,14 @@ function diagnostics() {
   ];
   for (const [name, e] of Object.entries(client?.stats.byEndpoint ?? {}))
     lines.push(`  ${name}: ${e.count}× ${JSON.stringify(e.statuses)}`);
-  return lines.join('\n');
+  if (keys) {
+    const k = keys.status();
+    lines.push(
+      `Асистент: ${settings.aiProvider}; ключі: ${PROVIDERS.map((p) => `${p}=${k[p].has ? 'є' : 'немає'}`).join(', ')}; шифрування: ${k.encryption}`,
+    );
+  }
+  // Ключі в діагностику не потрапляють навіть випадково.
+  return redactSecrets(lines.join('\n'), keys ? PROVIDERS.map((p) => keys.get(p)) : []);
 }
 
 function updateBadge(st) {
@@ -445,6 +461,54 @@ function hardenSessions() {
   });
 }
 
+/* ---------- Асистент (src/ai/) ---------- */
+function jsonStore(file) {
+  return {
+    load() {
+      try {
+        return JSON.parse(fs.readFileSync(file, 'utf8'));
+      } catch {
+        return null;
+      }
+    },
+    save(data) {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file + '.tmp', JSON.stringify(data));
+      fs.renameSync(file + '.tmp', file);
+    },
+  };
+}
+
+function aiStatus() {
+  const k = keys.status();
+  return {
+    keys: k,
+    provider: settings.aiProvider,
+    ready: DEMO || !!k[settings.aiProvider]?.has,
+    consent: settings.aiConsent === AI_CONSENT_VERSION,
+    demo: DEMO,
+    busy: assistant.busy(),
+  };
+}
+
+function setupAssistant(books = null) {
+  keys = createKeyStore({ file: path.join(app.getPath('userData'), 'keys.json'), safeStorage });
+  const getProvider = () => {
+    const key = keys.get(settings.aiProvider);
+    if (DEMO && !key) return createDemoProvider();
+    return createProvider({ settings, key, fetch: globalThis.fetch });
+  };
+  assistant = createAssistant({
+    getProvider,
+    verifyStudent: () => service.verifyStudent(),
+    tools: createTools({ service, books }),
+    service,
+    store: jsonStore(path.join(app.getPath('userData'), 'assistant.json')),
+    hasConsent: () => settings.aiConsent === AI_CONSENT_VERSION,
+    emit: (ev) => broadcast('ai:event', ev),
+  });
+}
+
 /** Ключ вмісту: id завдання (число) або матеріалу уроку («L123»). */
 const validKey = (k) => Number.isInteger(k) || (typeof k === 'string' && /^L\d+$/.test(k));
 
@@ -492,6 +556,36 @@ function registerIpc() {
     clipboard.writeText(t);
     return t;
   });
+  // Асистент: ключ іде лише у вікно → main (зберегти), назад повертається тільки статус «є / немає».
+  handle('ai:status', () => aiStatus());
+  handle('ai:setKey', (provider, key) => {
+    if (!PROVIDERS.includes(provider) || typeof key !== 'string')
+      return { ok: false, code: 'bad_request' };
+    try {
+      keys.set(provider, key);
+      return { ok: true, status: aiStatus() };
+    } catch (e) {
+      return { ok: false, code: e instanceof AiError ? e.code : 'error' };
+    }
+  });
+  handle('ai:clearKey', (provider) => {
+    if (PROVIDERS.includes(provider)) keys.clear(provider);
+    return aiStatus();
+  });
+  handle('ai:consent', (yes) => {
+    patchSettings({ aiConsent: yes === true ? AI_CONSENT_VERSION : 0 });
+    return aiStatus();
+  });
+  handle('ai:send', (req) => {
+    const r = req && typeof req === 'object' ? req : {};
+    const text = typeof r.text === 'string' ? r.text.slice(0, 8000) : '';
+    const mode = ['chat', 'explain', 'notebook'].includes(r.mode) ? r.mode : 'chat';
+    const taskId = Number.isInteger(r.taskId) ? r.taskId : null;
+    return assistant.send({ text, mode, taskId });
+  });
+  handle('ai:abort', () => assistant.abort());
+  handle('ai:history', () => assistant.history());
+  handle('ai:reset', () => assistant.reset());
   handle('app:info', () => ({
     version: pkg.version,
     requests: client?.stats.total ?? 0,
@@ -526,6 +620,7 @@ app.whenReady().then(async () => {
     cache: createFileCache(path.join(app.getPath('userData'), 'cache.json')),
     demo: DEMO ? createDemo(nowSec()) : null,
   });
+  setupAssistant();
   service.onChange((st) => {
     if (process.env.HD_LOG_BLOCKED && client?.stats.lastNetworkError)
       console.log('NET-ERR', st.status, client.stats.lastNetworkError);
