@@ -5,6 +5,7 @@ import {
   app,
   BrowserWindow,
   Menu,
+  dialog,
   Notification,
   Tray,
   WebContentsView,
@@ -41,6 +42,8 @@ import { PROVIDERS, createKeyStore, redactSecrets } from './src/ai/keys.js';
 import { createDemoProvider } from './src/ai/providers/demo.js';
 import { createProvider } from './src/ai/providers/index.js';
 import { createTools } from './src/ai/tools.js';
+import { createLibrary } from './src/books/library.js';
+import { parseRef } from './src/books/locate.js';
 import { AI_CONSENT_VERSION } from './src/settings.js';
 import { uk } from './src/uk.js';
 
@@ -70,7 +73,7 @@ app.setAppUserModelId(app.isPackaged ? 'com.humanplus.app' : 'com.humanplus.app.
 if (DEMO) app.setPath('userData', app.getPath('userData') + '-demo'); // демо не торкається справжнього кешу й сесії
 if (!app.requestSingleInstanceLock()) app.quit();
 
-let humanSession, service, settings, tray, mainWin, loginView, client, keys, assistant;
+let humanSession, service, settings, tray, mainWin, loginView, client, keys, assistant, library;
 let quitting = false;
 let gpuOk = true;
 let miniSaved = null;
@@ -491,6 +494,47 @@ function aiStatus() {
   };
 }
 
+/* ---------- Книги (src/books/) ---------- */
+const renders = new Map(); // reqId → resolve: сторінку-скан для моделі малює вікно (pdfjs), main лише чекає
+let renderSeq = 0;
+function renderPageInWindow(bookId, index) {
+  if (!mainWin || mainWin.isDestroyed()) return Promise.resolve(null);
+  const reqId = ++renderSeq;
+  return new Promise((resolve) => {
+    const t = setTimeout(() => (renders.delete(reqId), resolve(null)), 20000);
+    renders.set(reqId, (img) => (clearTimeout(t), renders.delete(reqId), resolve(img)));
+    broadcast('books:render', { reqId, bookId, index });
+  });
+}
+
+const PDFJS_DIR = path.join(here, 'node_modules', 'pdfjs-dist');
+const PDF_ASSET_DIRS = { cMapUrl: 'cmaps', standardFontDataUrl: 'standard_fonts' };
+
+function setupLibrary() {
+  library = createLibrary({
+    dir: path.join(app.getPath('userData'), 'books'),
+    renderPage: renderPageInWindow,
+  });
+}
+
+/** Фрагменти, які учень виділив у читачі: назву й номер сторінки бере main із бібліотеки, текст обрізається. */
+function cleanFragments(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .slice(0, 10)
+    .map((f) => {
+      const b = library.get(f?.bookId);
+      if (!b || !Number.isInteger(f.index) || typeof f.text !== 'string' || !f.text.trim())
+        return null;
+      return {
+        title: b.title,
+        printed: library.pageText(b.id, f.index)?.printed ?? null,
+        text: f.text.slice(0, 4000),
+      };
+    })
+    .filter(Boolean);
+}
+
 function setupAssistant(books = null) {
   keys = createKeyStore({ file: path.join(app.getPath('userData'), 'keys.json'), safeStorage });
   const getProvider = () => {
@@ -581,7 +625,74 @@ function registerIpc() {
     const text = typeof r.text === 'string' ? r.text.slice(0, 8000) : '';
     const mode = ['chat', 'explain', 'notebook'].includes(r.mode) ? r.mode : 'chat';
     const taskId = Number.isInteger(r.taskId) ? r.taskId : null;
-    return assistant.send({ text, mode, taskId });
+    return assistant.send({ text, mode, taskId, fragments: cleanFragments(r.fragments) });
+  });
+  // Книги: файли обирає учень у системному діалозі; вікно шляхів не передає.
+  handle('books:list', () => library.list());
+  handle('books:import', async (folder) => {
+    const res = await dialog.showOpenDialog(mainWin, {
+      title: uk.books.importTitle,
+      properties: folder ? ['openDirectory'] : ['openFile', 'multiSelections'],
+      filters: folder
+        ? []
+        : [{ name: uk.books.filter, extensions: ['pdf', 'epub', 'docx', 'txt'] }],
+    });
+    if (res.canceled || !res.filePaths.length) return { ok: false, canceled: true };
+    const progress = (p) => broadcast('books:progress', p);
+    if (folder)
+      return {
+        ok: true,
+        ...(await library.importFolder(res.filePaths[0], { onProgress: progress })),
+      };
+    const out = { ok: true, added: 0, skipped: 0, failed: 0, total: res.filePaths.length };
+    for (const [k, f] of res.filePaths.entries()) {
+      progress({ done: k, total: res.filePaths.length, name: path.basename(f) });
+      const r = await library.import(f);
+      r.ok ? out.added++ : out.failed++;
+    }
+    return out;
+  });
+  handle('books:update', (id, patch) => library.update(id, patch));
+  handle('books:calibrate', (id, pair) => library.calibrate(id, pair ?? null));
+  handle('books:remove', (id) => library.remove(id));
+  handle('books:bytes', (id) => {
+    const b = library.get(id);
+    return b && b.format === 'pdf' ? new Uint8Array(library.bytes(id)) : null;
+  });
+  handle('books:page', (id, index) =>
+    Number.isInteger(index) ? library.pageText(id, index) : null,
+  );
+  handle('books:search', (query, bookId) =>
+    typeof query === 'string'
+      ? library.search(query.slice(0, 200), { bookId: bookId ?? null, limit: 20 })
+      : [],
+  );
+  handle('books:forSubject', (subject) =>
+    typeof subject === 'string' ? library.findBooks(subject) : [],
+  );
+  /** Сторінка за текстом домашки («с. 34, № 2») у конкретній книзі. */
+  handle('books:locate', async (id, text) => {
+    const ref = parseRef(typeof text === 'string' ? text.slice(0, 20000) : '');
+    if (ref.page == null) return { ok: false, ref };
+    const r = await library.getPage(id, ref.page, { exercise: ref.exercise });
+    return r.ok
+      ? { ok: true, ref, index: r.index, printed: r.printed, approximate: r.approximate }
+      : { ok: false, ref };
+  });
+  handle('books:pdfAsset', (kind, filename) => {
+    const dir = PDF_ASSET_DIRS[kind];
+    if (!dir || typeof filename !== 'string' || !/^[\w.-]{1,80}$/.test(filename)) return null;
+    try {
+      return new Uint8Array(fs.readFileSync(path.join(PDFJS_DIR, dir, filename)));
+    } catch {
+      return null;
+    }
+  });
+  handle('books:rendered', (reqId, dataUrl) => {
+    const done = renders.get(reqId);
+    const m =
+      typeof dataUrl === 'string' && /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+    if (done) done(m && m[1].length < 6_000_000 ? { mediaType: 'image/jpeg', data: m[1] } : null);
   });
   handle('ai:abort', () => assistant.abort());
   handle('ai:history', () => assistant.history());
@@ -620,7 +731,8 @@ app.whenReady().then(async () => {
     cache: createFileCache(path.join(app.getPath('userData'), 'cache.json')),
     demo: DEMO ? createDemo(nowSec()) : null,
   });
-  setupAssistant();
+  setupLibrary();
+  setupAssistant(library);
   service.onChange((st) => {
     if (process.env.HD_LOG_BLOCKED && client?.stats.lastNetworkError)
       console.log('NET-ERR', st.status, client.stats.lastNetworkError);

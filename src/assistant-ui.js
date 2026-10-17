@@ -123,6 +123,12 @@ export function createAssistantUI(ctx) {
               text: `${t.modes[e.mode] ?? ''} · ${e.task.subject}${e.task.theme ? ': ' + e.task.theme : ''}`,
             })
           : null,
+        e.fragments?.length
+          ? h('div', {
+              class: 'meta',
+              text: `${t.fragments(e.fragments.length)}: ${e.fragments.map((f) => f.title + (f.printed != null ? ', с. ' + f.printed : '')).join('; ')}`,
+            })
+          : null,
         e.text ? h('div', { class: 'md' }, renderMarkdown(e.text)) : null,
       );
     return h(
@@ -379,9 +385,9 @@ export function createAssistantUI(ctx) {
   }
 
   /* ---------- Відправка ---------- */
-  async function send({ text = '', mode = 'chat', taskId = null }) {
+  async function send({ text = '', mode = 'chat', taskId = null, fragments = [] }) {
     if (busy()) return;
-    await api.ai.send({ text, mode, taskId });
+    await api.ai.send({ text, mode, taskId, fragments });
   }
   function submit() {
     const text = input.value.trim();
@@ -482,7 +488,10 @@ export function createAssistantUI(ctx) {
             )
           : null,
       );
-    else body = log;
+    else {
+      body = log;
+      if (!log.isConnected) scrollDown(); // панель щойно відкрилась: показати кінець розмови
+    }
     return h(
       'section',
       { class: 'chat' + (compact ? ' compact' : ''), 'aria-label': t.title },

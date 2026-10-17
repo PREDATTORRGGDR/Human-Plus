@@ -3,6 +3,7 @@
 // Дані приходять готовими зі стану main-процесу; тут лише вибірка (model.js) і відмальовування.
 import DOMPurify from '../node_modules/dompurify/dist/purify.es.mjs';
 import { createAssistantUI } from './assistant-ui.js';
+import { createBooksUI } from './books-ui.js';
 import { icon, logo } from './icons.js';
 import { dayView, gradesBySubject, nextView, subjectsOf, tasksView } from './model.js';
 import { createSanitizer } from './sanitize.js';
@@ -37,7 +38,7 @@ import { uk } from './uk.js';
 const api = window.hd;
 const root = document.getElementById('app');
 const nowSec = () => Math.floor(Date.now() / 1000);
-const TABS = ['today', 'next', 'tasks', 'schedule', 'grades', 'assistant'];
+const TABS = ['today', 'next', 'tasks', 'schedule', 'grades', 'assistant', 'books'];
 
 let st = null;
 let settings = {};
@@ -67,7 +68,36 @@ const assistant = createAssistantUI({
   tctx,
   getSnapshot: () => st?.snapshot,
   rerender: () => render(),
+  // картка «сторінка підручника» в чаті відкриває читач на цій сторінці
+  openPage: (c) => books.openAt(c.bookId, c.index).then(() => go({ tab: 'books' })),
 });
+const books = createBooksUI({
+  api,
+  rerender: () => render(),
+  subjects: () => (st?.snapshot ? subjectsOf(st.snapshot) : []),
+  // «Показати асистенту»: лише виділені фрагменти, чат відкривається поруч із читачем
+  onSend: ({ fragments, text }) => {
+    if (!settings.aiPanel) api.setSettings({ aiPanel: true });
+    assistant.ask({ text, fragments });
+  },
+});
+/** Текст блоків ДЗ (для пошуку «с. 34, № 2»): HTML розбирається у від'єднаному документі, нічого не виконується. */
+const blocksText = (blocks) => {
+  const doc = document.implementation.createHTMLDocument('');
+  return blocks
+    .map((b) => {
+      if (b.kind !== 'html' && b.kind !== 'table') return b.text ?? b.title ?? '';
+      doc.body.innerHTML = tctx.sanitize(b.html);
+      return doc.body.textContent;
+    })
+    .join('\n');
+};
+/** Кнопка «Підручник» у завданні: книга предмета на сторінці з домашки. */
+tctx.onBook = async (task, blocks) => {
+  const ok = await books.openFor(task.subject, `${task.themeTitle ?? ''}\n${blocksText(blocks)}`);
+  if (ok) go({ tab: 'books' });
+  else alert(uk.books.noTextbook);
+};
 /** Кнопки «Пояснити» / «Дай відповідь для зошита»: чат відкривається поруч із контентом. */
 tctx.onAsk = (mode, task) => {
   if (ui.tab !== 'assistant' && !settings.aiPanel) api.setSettings({ aiPanel: true });
@@ -309,6 +339,7 @@ function screen() {
         schedule: scheduleTab,
         grades: gradesTab,
         assistant: () => assistant.view(),
+        books: () => books.view(),
       }[ui.tab]();
   }
 }
@@ -1164,7 +1195,7 @@ initSpotlight();
 document.title = uk.appName;
 [st, settings] = await Promise.all([api.getState(), api.getSettings()]);
 applySettings(settings);
-await assistant.init();
+await Promise.all([assistant.init(), books.init()]);
 api.onState((s) => {
   st = s;
   render();

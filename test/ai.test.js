@@ -315,3 +315,12 @@ test('асистент: історія для моделі обрізаєтьс�
   assert.ok(p.calls.at(-1).messages.length <= LIMITS.historyMessages + 1);
   assert.equal(p.calls.at(-1).system, SYSTEM_PROMPT);
 });
+
+test('фрагменти з читача: у хід потрапляє лише виділене, з обмеженням довжини й кількості', () => {
+  const fragments = Array.from({ length: 15 }, (_, i) => ({ title: 'Алгебра 8', printed: 30 + i, text: 'ф'.repeat(2000) }));
+  const t = buildUserTurn({ text: 'Поясни', now: NOW, fragments }).content[0].text;
+  assert.match(t, /Фрагменти з підручника, які виділив учень/);
+  assert.match(t, /«Алгебра 8», с\. 30:/);
+  assert.ok(t.length < LIMITS.fragmentChars + 1500);
+  assert.ok(!t.includes('с. 44'));
+});

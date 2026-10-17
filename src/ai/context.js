@@ -9,6 +9,8 @@ export const LIMITS = {
   taskChars: 4000, // текст поточного ДЗ
   toolChars: 6000, // результат одного інструмента
   pageChars: 6000, // текст однієї сторінки книги
+  fragments: 10, // фрагментів книги, виділених учнем, за один хід
+  fragmentChars: 8000, // разом на всі фрагменти
   imagesPerTurn: 2, // зображень сторінок за один хід
   steps: 6, // запитів до моделі за один хід (цикл інструментів)
   maxTokens: 8000, // відповідь моделі
@@ -100,7 +102,14 @@ export const taskSummary = (t) => ({
  * Текст ходу учня: дата (тут, а не в системному промпті, щоб той лишався незмінним), режим кнопки й поточне ДЗ.
  * @param {{ text: string, now: number, mode?: keyof MODES, task?: any, taskBlocks?: any[] }} p
  */
-export function buildUserTurn({ text, now, mode = 'chat', task = null, taskBlocks = null }) {
+export function buildUserTurn({
+  text,
+  now,
+  mode = 'chat',
+  task = null,
+  taskBlocks = null,
+  fragments = [],
+}) {
   const lines = [`[Зараз: ${formatDay(now)}, ${formatTime(now)} (Київ)]`];
   if (task) {
     const s = taskSummary(task);
@@ -109,6 +118,18 @@ export function buildUserTurn({ text, now, mode = 'chat', task = null, taskBlock
     );
     const body = taskBlocks ? blocksToText(taskBlocks) : '';
     if (body) lines.push(`[Текст завдання]\n${clip(body, LIMITS.taskChars)}`);
+  }
+  if (fragments?.length) {
+    // Лише те, що учень сам виділив у читачі книг (не вся книга).
+    let left = LIMITS.fragmentChars;
+    const parts = [];
+    for (const f of fragments.slice(0, LIMITS.fragments)) {
+      if (left <= 0) break;
+      const body = clip(String(f.text ?? '').trim(), left);
+      left -= body.length;
+      parts.push(`«${f.title}»${f.printed != null ? ', с. ' + f.printed : ''}:\n${body}`);
+    }
+    lines.push(`[Фрагменти з підручника, які виділив учень]\n${parts.join('\n---\n')}`);
   }
   if (MODES[mode]) lines.push(`[Що потрібно] ${MODES[mode]}`);
   const t = clip(String(text ?? '').trim(), LIMITS.userChars);

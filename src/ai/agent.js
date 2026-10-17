@@ -70,9 +70,10 @@ export function createAssistant({
    * Хід учня. mode: chat | explain | notebook; taskId — ДЗ, з яким працюємо (кнопки «Пояснити» / «Відповідь для зошита»).
    * @returns {Promise<{ ok: boolean, code?: string }>}
    */
-  async function send({ text = '', mode = 'chat', taskId = null } = {}) {
+  async function send({ text = '', mode = 'chat', taskId = null, fragments = [] } = {}) {
     if (controller) return { ok: false, code: 'busy' };
-    if (!String(text).trim() && taskId == null) return { ok: false, code: 'empty' };
+    if (!String(text).trim() && taskId == null && !fragments.length)
+      return { ok: false, code: 'empty' };
     controller = new AbortController();
     const signal = controller.signal;
     const task =
@@ -83,6 +84,11 @@ export function createAssistant({
       text: String(text).trim(),
       mode,
       task: task ? { id: task.id, subject: task.subject, theme: task.themeTitle } : null,
+      fragments: fragments.map((f) => ({
+        title: f.title,
+        printed: f.printed,
+        chars: String(f.text ?? '').length,
+      })),
       at: now(),
     };
     const entry = { id: id(), role: 'assistant', text: '', cards: [], at: now(), tools: [] };
@@ -99,7 +105,7 @@ export function createAssistant({
         const r = await service.getTaskText(task.id);
         taskBlocks = r?.ok ? r.blocks : null;
       }
-      const userMsg = buildUserTurn({ text, now: now(), mode, task, taskBlocks });
+      const userMsg = buildUserTurn({ text, now: now(), mode, task, taskBlocks, fragments });
       const history = [...trimHistory(data.model), userMsg];
       turnMsgs.push(userMsg);
       let images = 0;

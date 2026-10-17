@@ -282,6 +282,18 @@ export function taskBody(t, ctx) {
           icon('pencil', 12),
           uk.buttons.notebook,
         ),
+        ctx.onBook
+          ? h(
+              'button',
+              {
+                class: 'btn small',
+                'data-k': `ask-book-${t.id}`,
+                onclick: () => ctx.onBook(t, r?.blocks ?? []),
+              },
+              icon('book', 12),
+              uk.books.openTextbook,
+            )
+          : null,
       ),
     );
   return body;
