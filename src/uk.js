@@ -225,7 +225,17 @@ export const uk = {
   errors: { generic: 'Щось пішло не так.' },
   days: { today: 'Сьогодні', tomorrow: 'Завтра' },
   grades: { subject: 'Предмет', grade: 'Оцінка', recent: 'Останні', count: 'Усього' },
+  lessonPage: {
+    now: 'Іде зараз',
+    join: 'Приєднатися до уроку',
+    ask: 'Запитати асистента',
+    homework: 'Домашнє завдання',
+    materials: 'Матеріали уроку',
+  },
   calendar: {
+    tasks: 'Завдання',
+    grades: 'Оцінки',
+    hasMaterials: (m, t) => `Матеріалів: ${m}, домашніх завдань: ${t}`,
     hw: (n) => `ДЗ: ${n}`,
     dueTitle: 'Здано / усього завдань із дедлайном цього дня',
     legend:

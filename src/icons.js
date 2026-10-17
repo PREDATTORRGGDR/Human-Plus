@@ -48,6 +48,9 @@ const PATHS = {
   code: 'm16 18 6-6-6-6M8 6l-6 6 6 6',
   archive: 'M21 8v13H3V8M1 3h22v5H1zM10 12h4',
   panel: 'M3 3h18v18H3zM15 3v18',
+  clipboard: 'M9 3h6v3H9zM7 5H5v16h14V5h-2M9 11h6M9 15h6',
+  chart: 'M4 21V10M10 21V4M16 21v-7M22 21H2',
+  paperclip: 'm21 11-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7',
   pencil: 'M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z',
 };
 

@@ -18,10 +18,11 @@ import {
   kyivParts,
   plural,
   weekStart,
-  weekdayShort,
 } from './time.js';
 import {
+  badge,
   counter,
+  deadlineText,
   countText,
   createTexts,
   dayLabel,
@@ -39,7 +40,7 @@ import { uk } from './uk.js';
 const api = window.hd;
 const root = document.getElementById('app');
 const nowSec = () => Math.floor(Date.now() / 1000);
-const TABS = ['today', 'calendar', 'tasks', 'grades', 'assistant', 'books', 'files'];
+const TABS = ['assistant', 'calendar', 'today', 'tasks', 'grades', 'books', 'files'];
 
 let st = null;
 let settings = {};
@@ -47,7 +48,8 @@ let refreshing = false;
 let dialogRefresh = null;
 let toast = '';
 const ui = {
-  tab: 'today',
+  tab: 'calendar',
+  lesson: null,
   dayOffset: 0,
   weekOffset: 0,
   animate: true,
@@ -229,29 +231,6 @@ function shell() {
       tools,
     ),
   );
-  if (ready && !mini)
-    top.append(
-      h(
-        'nav',
-        { class: 'tabs', 'aria-label': uk.buttons.tabsAria },
-        TABS.map((t, i) =>
-          h(
-            'button',
-            {
-              class: 'tab',
-              'aria-current': ui.tab === t ? 'page' : null,
-              'data-k': `tab-${t}`,
-              onclick: () => go({ tab: t }),
-            },
-            uk.tabs[t],
-            t === 'tasks'
-              ? counter('pending', st.snapshot.tasks.filter((x) => x.pending).length)
-              : null,
-            h('kbd', { 'aria-hidden': 'true', text: String(i + 1) }),
-          ),
-        ),
-      ),
-    );
   const body = mini && ready ? miniView() : screen();
   const page = h(
     'div',
@@ -270,11 +249,69 @@ function shell() {
           assistant.view({ compact: true, onClose: () => api.setSettings({ aiPanel: false }) }),
         )
       : null;
+  const content = side ? h('div', { class: 'split' }, main, side) : main;
   return h(
     'div',
     { class: 'shell' + (ui.tab === 'assistant' ? ' full-chat' : '') },
     top,
-    side ? h('div', { class: 'split' }, main, side) : main,
+    ready && !mini ? h('div', { class: 'body' }, sidenav(), content) : content,
+  );
+}
+
+/** Вертикальна панель навігації зліва (структура як у щоденнику HUMAN; іконки й кольори свої). */
+const NAV_ICON = {
+  assistant: 'sparkles',
+  calendar: 'calendar',
+  today: 'list',
+  tasks: 'clipboard',
+  grades: 'chart',
+  books: 'book',
+  files: 'folder',
+};
+function sidenav() {
+  const pending = st.snapshot.tasks.filter((x) => x.pending).length;
+  const item = (t, i) =>
+    h(
+      'button',
+      {
+        class: 'nav-btn' + (t === 'assistant' ? ' ai' : ''),
+        'aria-current': ui.tab === t ? 'page' : null,
+        'aria-label': `${uk.tabs[t]} (${i + 1})`,
+        title: `${uk.tabs[t]} · ${i + 1}`,
+        'data-k': `tab-${t}`,
+        onclick: () => go({ tab: t, lesson: null }),
+      },
+      icon(NAV_ICON[t], 22),
+      h('span', { class: 'nav-label', text: uk.tabs[t] }),
+      t === 'tasks' && pending
+        ? h('span', { class: 'nav-badge num', text: String(pending) })
+        : null,
+    );
+  return h(
+    'nav',
+    { class: 'sidenav', 'aria-label': uk.buttons.tabsAria },
+    h('div', { class: 'nav-group' }, item('assistant', 0)),
+    h(
+      'div',
+      { class: 'nav-group grow-nav' },
+      TABS.slice(1).map((t, i) => item(t, i + 1)),
+    ),
+    h(
+      'div',
+      { class: 'nav-group' },
+      h(
+        'button',
+        {
+          class: 'nav-btn',
+          'aria-label': uk.buttons.settings,
+          title: uk.buttons.settings,
+          'data-k': 'nav-settings',
+          onclick: openSettings,
+        },
+        icon('settings', 22),
+        h('span', { class: 'nav-label', text: uk.buttons.settings }),
+      ),
+    ),
   );
 }
 
@@ -338,7 +375,7 @@ function screen() {
     default:
       return {
         today: todayTab,
-        calendar: calendarTab,
+        calendar: () => (ui.lesson ? lessonPage() : calendarTab()),
         tasks: tasksTab,
         grades: gradesTab,
         assistant: () => assistant.view(),
@@ -730,44 +767,262 @@ function tasksTab() {
   ];
 }
 
-/* ---------- Календар: тиждень з уроками й дедлайнами ---------- */
-function slot(l, t, isToday, next, hw) {
-  const now = isToday && !l.cancelled && l.start <= t && t < l.end;
-  const between = isToday && t >= l.end && next && t < next.start;
+/* ---------- Сторінка уроку (відкривається з календаря) ---------- */
+/** Блок завдання чи матеріалу з одразу розгорнутим вмістом (текст підвантажується й оновлюється на місці). */
+function lessonItem(t0, kind) {
+  const t = kind === 'lesson' ? { ...t0, kind: 'lesson' } : t0;
+  tctx.texts.ensure(t);
+  ui.expanded.add(t.id);
+  const late = t.status === 'overdue';
   return h(
-    'button',
-    {
-      class: 'slot' + (l.cancelled ? ' cancelled' : '') + (now ? ' now' : ''),
-      style: `--sj:${subjectColor(l.subjectKey)}`,
-      'data-k': `slot-${l.id}`,
-      title: l.title || l.subject,
-      // клік відкриває день на вкладці «Сьогодні» з розгорнутим уроком
-      onclick: () => {
-        ui.expandedLessons.add(l.id);
-        go({ tab: 'today', dayOffset: Math.round((dayStart(l.start) - dayStart(t)) / 86400) });
-      },
-    },
-    h('div', { class: 'meta num', text: `${l.period ? l.period + ' · ' : ''}${lessonTime(l)}` }),
-    h('div', { class: 'name' }, subjectDot(l.subjectKey), l.subject),
-    l.title ? h('div', { class: 'meta slot-theme', text: l.title }) : null,
+    'article',
+    { class: 'card litem' + (late ? ' late' : ''), 'data-task': t.id },
+    h(
+      'header',
+      { class: 'litem-head' },
+      kind === 'lesson'
+        ? h('span', { class: 'badge', 'data-s': 'unknown' }, icon('file', 12), t.typeName)
+        : badge(t.status),
+      h('h3', {
+        class: 'litem-title',
+        text: kind === 'lesson' ? t.title || t.typeName : t.typeName || uk.assigned,
+      }),
+      kind === 'lesson'
+        ? null
+        : h('span', { class: 'meta deadline' + (late ? ' late' : ''), text: deadlineText(t) }),
+      t.grade != null ? h('span', { class: 'grade', text: String(t.grade) }) : null,
+    ),
+    h('div', { class: 'inner' }, taskBody(t, tctx)),
+  );
+}
+
+function lessonPage() {
+  const l = ui.lesson;
+  const t = nowSec();
+  const tasks = l.themeId == null ? [] : st.snapshot.tasks.filter((x) => x.themeId === l.themeId);
+  const grades = st.snapshot.grades.filter(
+    (g) =>
+      g.subjectKey === l.subjectKey && dayStart(g.date) === dayStart(l.start) && g.value != null,
+  );
+  const now = !l.cancelled && l.start <= t && t < l.end;
+  const back = () => go({ lesson: null });
+  return [
     h(
       'div',
-      { class: 'row' },
-      lessonBadges(l),
-      hw
-        ? h('span', { class: 'badge', 'data-s': 'assigned' }, icon('check', 12), uk.calendar.hw(hw))
+      { class: 'weeknav' },
+      h(
+        'button',
+        { class: 'btn', 'data-k': 'lesson-back', onclick: back },
+        icon('chevronLeft', 14),
+        uk.tabs.calendar,
+      ),
+    ),
+    h(
+      'section',
+      { class: 'card lhero', style: `--sj:${subjectColor(l.subjectKey)}` },
+      h(
+        'div',
+        { class: 'lhero-top' },
+        h('span', { class: 'lhero-subj' }, subjectDot(l.subjectKey), l.subject),
+        now ? h('span', { class: 'badge ok', text: uk.lessonPage.now }) : null,
+        lessonBadges(l),
+        h('span', { class: 'grow' }),
+        grades.map((g) =>
+          h('span', { class: 'lhero-grade num', title: g.kind, text: String(g.value) }),
+        ),
+      ),
+      h('h1', { class: 'lhero-theme', text: l.title || uk.lesson.noTheme }),
+      h(
+        'p',
+        { class: 'meta num' },
+        `${formatDay(dayStart(l.start))} · ${l.period ? l.period + ' ' + uk.lesson.lessonWord + ' · ' : ''}${lessonTime(l)}`,
+      ),
+      h(
+        'div',
+        { class: 'row lhero-actions' },
+        l.zoomUrl && !l.cancelled
+          ? h(
+              'button',
+              {
+                class: 'btn primary',
+                'data-k': 'lesson-zoom',
+                onclick: () => api.openExternal(l.zoomUrl),
+              },
+              icon('video', 14),
+              uk.lessonPage.join,
+            )
+          : null,
+        tasks[0]
+          ? h(
+              'button',
+              {
+                class: 'btn',
+                'data-k': 'lesson-ask',
+                onclick: () => tctx.onAsk('explain', tasks[0]),
+              },
+              icon('sparkles', 14),
+              uk.lessonPage.ask,
+            )
+          : null,
+        h(
+          'button',
+          {
+            class: 'btn',
+            'data-k': 'lesson-book',
+            onclick: () =>
+              tasks[0]
+                ? tctx.onBook(tasks[0], tctx.texts.get(tasks[0])?.blocks ?? [])
+                : books
+                    .openFor(l.subject, l.title)
+                    .then((ok) =>
+                      ok ? go({ tab: 'books', lesson: null }) : alert(uk.books.noTextbook),
+                    ),
+          },
+          icon('book', 14),
+          uk.books.openTextbook,
+        ),
+      ),
+    ),
+    h(
+      'h2',
+      { class: 'group' },
+      uk.lessonPage.homework,
+      tasks.length ? h('small', { text: countText(tasks.length) }) : null,
+    ),
+    tasks.length
+      ? tasks.map((x) => lessonItem(x, 'task'))
+      : h('p', {
+          class: 'card pad meta',
+          text: l.projected ? uk.lesson.projectedNote : uk.states.noHomework,
+        }),
+    l.lessonTasks.length
+      ? [
+          h(
+            'h2',
+            { class: 'group' },
+            uk.lessonPage.materials,
+            h('small', { text: plural(l.lessonTasks.length, uk.plural.material) }),
+          ),
+          l.lessonTasks.map((x) => lessonItem(x, 'lesson')),
+        ]
+      : null,
+  ];
+}
+
+/* ---------- Календар: тиждень із 7 днів (структура як у щоденнику HUMAN, оформлення своє) ---------- */
+const WEEKDAYS = ['Понеділок', 'Вівторок', 'Середа', 'Четвер', 'П’ятниця', 'Субота', 'Неділя'];
+const dmy = (d) => {
+  const p = kyivParts(d);
+  return `${String(p.d).padStart(2, '0')}.${String(p.m).padStart(2, '0')}`;
+};
+
+/** Урок відкривається окремою сторінкою (як у щоденнику), а не в бічній панелі. */
+const openLesson = (l) => go({ lesson: l });
+
+/** Список завдань із дедлайном дня або оцінок дня в бічній панелі (смужки над колонкою дня). */
+function openDayTasks(d) {
+  const due = st.snapshot.tasks.filter(
+    (x) => x.deadline != null && x.deadline >= d && x.deadline < addDays(d, 1),
+  );
+  autoOpen([]);
+  drawer(`${uk.calendar.tasks} · ${formatDay(d)}`, () =>
+    due.length
+      ? h(
+          'ul',
+          { class: 'tasks card' },
+          due.map((x) => taskCard(x, { ...tctx, showSubject: true })),
+        )
+      : h('p', { class: 'meta', text: uk.states.noHomework }),
+  );
+}
+function openDayGrades(d) {
+  const list = st.snapshot.grades.filter((g) => dayStart(g.date) === d);
+  drawer(`${uk.calendar.grades} · ${formatDay(d)}`, () =>
+    list.length
+      ? h(
+          'table',
+          { class: 'gtable' },
+          h(
+            'tbody',
+            {},
+            list.map((g) =>
+              h(
+                'tr',
+                {},
+                h('td', {}, subjectDot(g.subjectKey), g.subject),
+                h('td', { class: 'meta', text: g.kind }),
+                h('td', {}, h('span', { class: 'grade', text: g.value ?? '—' })),
+              ),
+            ),
+          ),
+        )
+      : h('p', { class: 'meta', text: uk.states.noGrades }),
+  );
+}
+
+function lessonCard(l, t, isToday, gradesOfDay) {
+  const tasks = l.themeId == null ? [] : st.snapshot.tasks.filter((x) => x.themeId === l.themeId);
+  const left = tasks.filter((x) => x.pending).length;
+  const state = l.cancelled ? 'cancelled' : tasks.length ? (left ? 'pending' : 'done') : 'none';
+  const now = isToday && !l.cancelled && l.start <= t && t < l.end;
+  const grade = gradesOfDay.find((g) => g.subjectKey === l.subjectKey && g.value != null);
+  return h(
+    'div',
+    {
+      class: 'lcard' + (now ? ' now' : '') + (l.cancelled ? ' cancelled' : ''),
+      'data-state': state,
+    },
+    h(
+      'button',
+      { class: 'lcard-main', 'data-k': `slot-${l.id}`, onclick: () => openLesson(l) },
+      h('span', { class: 'lcard-subj', text: l.subject }),
+      l.title ? h('span', { class: 'lcard-theme', text: l.title }) : null,
+      h(
+        'span',
+        { class: 'lcard-time' },
+        l.period
+          ? h('span', { class: 'lcard-n', text: `${l.period} ${uk.lesson.lessonWord}` })
+          : null,
+        h('span', { class: 'num', text: lessonTime(l) }),
+      ),
+      lessonBadges(l).filter(Boolean).length ? h('span', { class: 'row' }, lessonBadges(l)) : null,
+    ),
+    h(
+      'div',
+      { class: 'lcard-foot' },
+      l.lessonTasks.length || tasks.length
+        ? h(
+            'span',
+            {
+              class: 'lcard-ico',
+              title: uk.calendar.hasMaterials(l.lessonTasks.length, tasks.length),
+            },
+            icon('paperclip', 16),
+            tasks.length
+              ? h('span', { class: 'num', text: `${tasks.length - left}/${tasks.length}` })
+              : null,
+          )
+        : null,
+      l.zoomUrl && !l.cancelled
+        ? h(
+            'button',
+            {
+              class: 'lcard-zoom on',
+              'aria-label': `${uk.buttons.zoom}: ${l.subject}`,
+              title: uk.buttons.zoom,
+              onclick: () => api.openExternal(l.zoomUrl),
+            },
+            icon('video', 16),
+          )
+        : h('span', { class: 'lcard-zoom', 'aria-hidden': 'true' }, icon('video', 16)),
+      grade
+        ? h('span', {
+            class: 'lcard-grade num',
+            title: `${uk.grades.grade}: ${grade.kind}`,
+            text: String(grade.value),
+          })
         : null,
     ),
-    now
-      ? h('span', {
-          class: 'nowline',
-          'aria-hidden': 'true',
-          style: `top:${(((t - l.start) / (l.end - l.start)) * 100).toFixed(1)}%`,
-        })
-      : null,
-    between
-      ? h('span', { class: 'nowline', 'aria-hidden': 'true', style: 'top:calc(100% + 4px)' })
-      : null,
   );
 }
 
@@ -786,72 +1041,91 @@ function calendarTab() {
   }
   const nav = h(
     'div',
-    { class: 'daynav' },
+    { class: 'weeknav' },
     iconBtn('chevronLeft', uk.buttons.prevWeek, () => go({ weekOffset: ui.weekOffset - 1 }), {
+      class: 'btn icon ghost',
       'data-k': 'wk-prev',
     }),
-    h('strong', { text: `${formatShortDay(start)} – ${formatShortDay(addDays(start, 6))}` }),
+    h('strong', {
+      class: 'num',
+      text: `${formatShortDay(start).replace(/^[^,]*,\s*/, '')} – ${formatShortDay(addDays(start, 6)).replace(/^[^,]*,\s*/, '')}`,
+    }),
     iconBtn('chevronRight', uk.buttons.nextWeek, () => go({ weekOffset: ui.weekOffset + 1 }), {
+      class: 'btn icon ghost',
       'data-k': 'wk-next',
     }),
-    btn(uk.buttons.thisWeek, () => go({ weekOffset: 0 }), {
-      disabled: ui.weekOffset === 0 || null,
-      'data-k': 'wk-now',
-    }),
+    ui.weekOffset
+      ? btn(uk.buttons.thisWeek, () => go({ weekOffset: 0 }), {
+          class: 'btn small',
+          'data-k': 'wk-now',
+        })
+      : null,
   );
   if (!entry) return [nav, skeleton()];
   const { lessons, weekends = [] } = entry.data;
-  const days = [0, 1, 2, 3, 4, 5, 6]
-    .map((i) => addDays(start, i))
-    .filter((d, i) => i < 5 || lessons.some((l) => l.start >= d && l.start < addDays(d, 1)));
+  const days = [0, 1, 2, 3, 4, 5, 6].map((i) => addDays(start, i));
   return [
     nav,
     h(
       'div',
-      { class: 'week' },
-      days.map((d) => {
+      { class: 'week7' },
+      days.map((d, i) => {
         const list = lessons.filter((l) => l.start >= d && l.start < addDays(d, 1));
         const due = st.snapshot.tasks.filter(
           (x) => x.deadline != null && x.deadline >= d && x.deadline < addDays(d, 1),
         );
-        const left = due.filter((x) => x.pending).length;
+        const done = due.filter((x) => !x.pending).length;
+        const gradesOfDay = st.snapshot.grades.filter((g) => dayStart(g.date) === d);
+        const isWeekend = i >= 5;
         return h(
           'section',
-          { class: 'card col' + (d === today ? ' today' : ''), 'aria-label': formatDay(d) },
+          {
+            class: 'daycol' + (d === today ? ' today' : '') + (isWeekend ? ' weekend' : ''),
+            'aria-label': formatDay(d),
+          },
           h(
-            'h3',
-            {},
-            h('span', {
-              text: `${weekdayShort(d)}, ${formatShortDay(d).replace(/^[^,]*,\s*/, '')}`,
-            }),
-            due.length
-              ? h('span', {
-                  class: 'due num' + (left ? ' left' : ''),
-                  title: uk.calendar.dueTitle,
-                  text: `${due.length - left}/${due.length}`,
-                })
-              : null,
+            'header',
+            { class: 'dayhead' },
+            h('div', { class: 'dayname', text: WEEKDAYS[i] }),
+            h('div', { class: 'daydate num', text: dmy(d) }),
           ),
-          list.length
-            ? list.map((l, i) =>
-                slot(
-                  l,
-                  t,
-                  d === today,
-                  list[i + 1],
-                  l.themeId == null
-                    ? 0
-                    : st.snapshot.tasks.filter((x) => x.themeId === l.themeId).length,
+          list.length || due.length
+            ? [
+                h(
+                  'button',
+                  {
+                    class: 'daybar tasks-bar',
+                    'data-k': `dt-${i}`,
+                    onclick: () => openDayTasks(d),
+                  },
+                  icon('clipboard', 14),
+                  h('span', { class: 'grow', text: uk.calendar.tasks }),
+                  h('span', { class: 'num', text: `${done}/${due.length}` }),
                 ),
-              )
-            : h('div', {
-                class: 'meta',
-                text: weekends.includes(d) ? uk.lesson.weekend : uk.lesson.noLessons,
-              }),
+                h(
+                  'button',
+                  {
+                    class: 'daybar grades-bar',
+                    'data-k': `dg-${i}`,
+                    onclick: () => openDayGrades(d),
+                  },
+                  icon('award', 14),
+                  h('span', { class: 'grow', text: uk.calendar.grades }),
+                  h('span', {
+                    class: 'num',
+                    text: String(gradesOfDay.filter((g) => g.value != null).length),
+                  }),
+                ),
+              ]
+            : null,
+          list.length
+            ? list.map((l) => lessonCard(l, t, d === today, gradesOfDay))
+            : isWeekend || weekends.includes(d)
+              ? null
+              : h('p', { class: 'meta daynone', text: uk.lesson.noLessons }),
         );
       }),
     ),
-    h('p', { class: 'meta', text: uk.calendar.legend }),
   ];
 }
 
